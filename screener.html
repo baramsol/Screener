@@ -35,6 +35,11 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <button onclick="applyLogicPreset('QULL_WATCH')" class="btn btn-blue">Qullamaggie Watch 불러오기</button>
 <button onclick="applyLogicPreset('QULL_BREAKOUT')" class="btn btn-blue">Qullamaggie Breakout 불러오기</button>
 <button onclick="applyLogicPreset('QULL_MOM')" class="btn btn-blue">Qullamaggie Momentum 불러오기</button>
+<button onclick="applyLogicPreset('ADH_BASE')" class="btn btn-blue">ADH-VCP Base 불러오기</button>
+<button onclick="applyLogicPreset('ADH_NEAR')" class="btn btn-blue">ADH-VCP Near 불러오기</button>
+<button onclick="applyLogicPreset('ADH_WATCH')" class="btn btn-blue">ADH-VCP Watch 불러오기</button>
+<button onclick="applyLogicPreset('ADH_TIGHT')" class="btn btn-blue">ADH-VCP Tight Coil 불러오기</button>
+<button onclick="applyLogicPreset('ADH_BREAKOUT')" class="btn btn-blue">ADH-VCP Breakout 불러오기</button>
 <button onclick="clearLogic()" class="btn btn-red">Logic 초기화</button>
 </div>
 <div style="margin-top:8px"><b>현재 Logic:</b> <span id="logicDesc" style="font-size:13px"></span></div>
@@ -127,8 +132,11 @@ const FIELDS=[
  {v:'high_diff',label:'% from 52W Hi'},{v:'low_diff',label:'% from 52W Lo'},
  {v:'vs_ema10',label:'% vs EMA10'},{v:'vs_ema20',label:'% vs EMA20'},{v:'vs_ema50',label:'% vs EMA50'},
  {v:'adr',label:'ADR %'},{v:'beta',label:'Beta'},{v:'vola',label:'변동성 %'},{v:'mcap',label:'시가총액 (억)'},
+ {v:'adh_depth',label:'ADH Base Depth %'},{v:'adh_contractions',label:'ADH Contractions'},
+ {v:'adh_last_c_pct',label:'ADH Last Contraction %'},{v:'adh_dist_line',label:'ADH Dist to Trendline %'},
+ {v:'adh_coil_range',label:'ADH Coil Range %'},{v:'adh_base_age',label:'ADH Base Age'},
 ];
-const PRESETS=[{id:'ALL',label:'All Stocks'},{id:'MIN',label:'Minervini'},{id:'CANSLIM',label:'CANSLIM'},{id:'VCP',label:'VCP'},{id:'BLUE',label:'Blue Dots'},{id:'VOL',label:'Vol Breakout'},{id:'EPISODIC',label:'Episodic Pivot'},{id:'MOM',label:'Momentum'},{id:'LEADER',label:'Leaders'},{id:'NEWHIGH',label:'New Highs'},{id:'GROWTH',label:'Growth'},{id:'TIGHT',label:'Tight'},{id:'SQUEEZE',label:'Squeeze'},{id:'QULL_EP',label:'Qullamaggie EP'},{id:'QULL_WATCH',label:'Qullamaggie Watch'},{id:'QULL_BREAKOUT',label:'Qullamaggie Breakout'},{id:'QULL_MOM',label:'Qullamaggie Momentum'}];
+const PRESETS=[{id:'ALL',label:'All Stocks'},{id:'MIN',label:'Minervini'},{id:'CANSLIM',label:'CANSLIM'},{id:'VCP',label:'VCP'},{id:'BLUE',label:'Blue Dots'},{id:'VOL',label:'Vol Breakout'},{id:'EPISODIC',label:'Episodic Pivot'},{id:'MOM',label:'Momentum'},{id:'LEADER',label:'Leaders'},{id:'NEWHIGH',label:'New Highs'},{id:'GROWTH',label:'Growth'},{id:'TIGHT',label:'Tight'},{id:'SQUEEZE',label:'Squeeze'},{id:'QULL_EP',label:'Qullamaggie EP'},{id:'QULL_WATCH',label:'Qullamaggie Watch'},{id:'QULL_BREAKOUT',label:'Qullamaggie Breakout'},{id:'QULL_MOM',label:'Qullamaggie Momentum'},{id:'ADH_BASE',label:'ADH-VCP Base'},{id:'ADH_NEAR',label:'ADH-VCP Near'},{id:'ADH_WATCH',label:'ADH-VCP Watch'},{id:'ADH_TIGHT',label:'ADH-VCP Tight Coil'},{id:'ADH_BREAKOUT',label:'ADH-VCP Breakout'}];
 function minCount(r){return [r.c1,r.c2,r.c3,r.c4,r.c5,r.c6,r.c7,r.c8].filter(Boolean).length;}
 function isMin(r){return minCount(r)===8 && r.rs>=70;}
 function isCanslim(r){return r.eps_growth>=25 && r.sales_growth>=20 && r.roe>=17 && r.rs>=80 && r.high_diff>=-5 && r.vol_ratio>=1.5;}
@@ -146,6 +154,12 @@ function isQullEP(r){return r.change>=5 && r.vol_ratio>=3 && r.high_diff>=-10 &&
 function isQullWatch(r){return r.change>=2 && r.vol_ratio>=2 && r.high_diff>=-5 && r.rs>=80;}
 function isQullBreakout(r){return r.high_diff>=-2 && r.high_diff<=0 && r.vol_ratio>=1.5 && r.change>=2 && r.rs>=80 && r.c5;}
 function isQullMom(r){return r.ret3m>=30 && r.rs>=90 && r.high_diff>=-5 && r.vol_ratio>=1.5;}
+function adhDist(r){return (r.adh_dist_line!==undefined&&r.adh_dist_line!==null)?r.adh_dist_line:r.high_diff;}
+function isAdhBase(r){if(r.adh_depth!==undefined&&r.adh_depth!==null)return r.adh_depth<=35&&(r.adh_contractions||0)>=1;return r.vola<2.5&&r.high_diff>=-35&&r.high_diff<=-2&&r.rs>=70;}
+function isAdhNear(r){let d=adhDist(r);if(r.adh_dist_line!==undefined&&r.adh_dist_line!==null)return d>0&&d<=4&&(r.adh_contractions||0)>=1&&r.adh_depth<=35;return r.high_diff>=-4&&r.high_diff<-2&&r.vola<1.5;}
+function isAdhWatch(r){let d=adhDist(r);if(r.adh_dist_line!==undefined&&r.adh_dist_line!==null)return d>4&&d<=8&&(r.adh_contractions||0)>=1&&r.adh_depth<=35;return r.high_diff>=-8&&r.high_diff<-4&&r.vola<2.5;}
+function isAdhTight(r){if(r.adh_coil_range!==undefined&&r.adh_coil_range!==null)return r.adh_coil_range<=3&&adhDist(r)<=4&&adhDist(r)>0&&(r.adh_contractions||0)>=1;return r.vola<1.5&&Math.abs(r.change)<1&&r.high_diff>=-4&&r.high_diff<=0;}
+function isAdhBreakout(r){let d=adhDist(r);if(r.adh_dist_line!==undefined&&r.adh_dist_line!==null)return r.adh_depth<=35&&(r.adh_contractions||0)>=2&&d<=2&&d>-2&&r.vol_ratio>=1.5&&r.rs>=80&&r.price>r.sma50&&r.price>r.sma200;return r.high_diff>=-2&&r.high_diff<=0&&r.vol_ratio>=1.5&&r.change>=2&&r.rs>=80&&r.price>r.sma50&&r.price>r.sma200;}
 function presetFilter(r){
  if(PRESET==='ALL') return true;
  if(PRESET==='MIN') return isMin(r);
@@ -164,18 +178,22 @@ function presetFilter(r){
  if(PRESET==='QULL_WATCH') return isQullWatch(r);
  if(PRESET==='QULL_BREAKOUT') return isQullBreakout(r);
  if(PRESET==='QULL_MOM') return isQullMom(r);
+ if(PRESET==='ADH_BASE') return isAdhBase(r);
+ if(PRESET==='ADH_NEAR') return isAdhNear(r);
+ if(PRESET==='ADH_WATCH') return isAdhWatch(r);
+ if(PRESET==='ADH_TIGHT') return isAdhTight(r);
+ if(PRESET==='ADH_BREAKOUT') return isAdhBreakout(r);
  return true;
 }
 function buildTabs(){
  let el=document.getElementById('presetTabs');
  el.innerHTML=PRESETS.map(p=>`<button class="tab ${p.id===PRESET?'active':''}" onclick="setPreset('${p.id}')">${p.label} <small id="cnt-${p.id}"></small></button>`).join('');
- // 저장된 커스텀 프리셋도 탭으로
  SAVED.forEach((s,i)=>{ el.innerHTML+=`<button class="tab" style="background:#eff6ff;color:#2563eb;border:1px solid #2563eb" onclick="loadSaved(${i})">${s.name}</button>`; });
  updateCounts();
 }
 function updateCounts(){
  if(!RAW.length) return;
- let c={ALL:RAW.length,MIN:RAW.filter(isMin).length,CANSLIM:RAW.filter(isCanslim).length,VCP:RAW.filter(isVCP).length,BLUE:RAW.filter(isBlue).length,VOL:RAW.filter(isVolBreak).length,EPISODIC:RAW.filter(isEpisodic).length,MOM:RAW.filter(isMom).length,LEADER:RAW.filter(isLeader).length,NEWHIGH:RAW.filter(isNewHigh).length,GROWTH:RAW.filter(isGrowth).length,TIGHT:RAW.filter(isTight).length,SQUEEZE:RAW.filter(isSqueeze).length,QULL_EP:RAW.filter(isQullEP).length,QULL_WATCH:RAW.filter(isQullWatch).length,QULL_BREAKOUT:RAW.filter(isQullBreakout).length,QULL_MOM:RAW.filter(isQullMom).length};
+ let c={ALL:RAW.length,MIN:RAW.filter(isMin).length,CANSLIM:RAW.filter(isCanslim).length,VCP:RAW.filter(isVCP).length,BLUE:RAW.filter(isBlue).length,VOL:RAW.filter(isVolBreak).length,EPISODIC:RAW.filter(isEpisodic).length,MOM:RAW.filter(isMom).length,LEADER:RAW.filter(isLeader).length,NEWHIGH:RAW.filter(isNewHigh).length,GROWTH:RAW.filter(isGrowth).length,TIGHT:RAW.filter(isTight).length,SQUEEZE:RAW.filter(isSqueeze).length,QULL_EP:RAW.filter(isQullEP).length,QULL_WATCH:RAW.filter(isQullWatch).length,QULL_BREAKOUT:RAW.filter(isQullBreakout).length,QULL_MOM:RAW.filter(isQullMom).length,ADH_BASE:RAW.filter(isAdhBase).length,ADH_NEAR:RAW.filter(isAdhNear).length,ADH_WATCH:RAW.filter(isAdhWatch).length,ADH_TIGHT:RAW.filter(isAdhTight).length,ADH_BREAKOUT:RAW.filter(isAdhBreakout).length};
  for(let k in c){let el=document.getElementById('cnt-'+k); if(el) el.textContent=`(${c[k]})`;}
 }
 function setPreset(p){PRESET=p; buildTabs(); render();}
@@ -252,13 +270,47 @@ function applyLogicPreset(name){
    {logic:'AND',field:'high_diff',op:'>=',value:-5},
    {logic:'AND',field:'vol_ratio',op:'>=',value:1.5},
   ];
+ } else if(name==='ADH_BASE'){
+  LOGIC=[
+   {logic:'AND',field:'adh_depth',op:'<=',value:35},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:1},
+  ];
+ } else if(name==='ADH_NEAR'){
+  LOGIC=[
+   {logic:'AND',field:'adh_dist_line',op:'>',value:0},
+   {logic:'AND',field:'adh_dist_line',op:'<=',value:4},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:1},
+   {logic:'AND',field:'adh_depth',op:'<=',value:35},
+  ];
+ } else if(name==='ADH_WATCH'){
+  LOGIC=[
+   {logic:'AND',field:'adh_dist_line',op:'>',value:4},
+   {logic:'AND',field:'adh_dist_line',op:'<=',value:8},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:1},
+   {logic:'AND',field:'adh_depth',op:'<=',value:35},
+  ];
+ } else if(name==='ADH_TIGHT'){
+  LOGIC=[
+   {logic:'AND',field:'adh_coil_range',op:'<=',value:3},
+   {logic:'AND',field:'adh_dist_line',op:'>',value:0},
+   {logic:'AND',field:'adh_dist_line',op:'<=',value:4},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:1},
+  ];
+ } else if(name==='ADH_BREAKOUT'){
+  LOGIC=[
+   {logic:'AND',field:'adh_depth',op:'<=',value:35},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:2},
+   {logic:'AND',field:'adh_dist_line',op:'<=',value:2},
+   {logic:'AND',field:'adh_dist_line',op:'>',value:-2},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:1.5},
+   {logic:'AND',field:'rs',op:'>=',value:80},
+  ];
  }
  renderLogic(); render();
 }
 function clearLogic(){LOGIC=[]; renderLogic(); render();}
 function evalLogic(r){
  if(LOGIC.length===0) return true;
- // 첫 조건은 WHERE, 이후 AND/OR로 결합
  let result=evalOne(r, LOGIC[0]);
  for(let i=1;i<LOGIC.length;i++){
   let cur=evalOne(r, LOGIC[i]);
@@ -388,7 +440,6 @@ function render(){
   if(SEG.se==='NO' && (r.high_diff>=-2 && r.vol_ratio>=1.5)) return false;
   let stage = minCount(r)===8 ? '2' : (minCount(r)<=3 ? '4' : '1');
   if(val('f_stage')!=='ALL' && stage!==val('f_stage')) return false;
-  // IPO Age: data_days로 추정 (252일 미만이면 신규)
   if(SEG.ipo==='6M' && r.data_days>180) return false;
   if(SEG.ipo==='1Y' && r.data_days>365) return false;
   if(SEG.ipo==='2Y' && r.data_days<500) return false;

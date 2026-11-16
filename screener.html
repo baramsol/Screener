@@ -1,0 +1,409 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KR Screener - Full Logic Builder</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Malgun Gothic,sans-serif;background:#f1f5f9;color:#0f172a}
+header{padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:10}
+.tabs{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;padding:6px 0}.tab{padding:6px 12px;border-radius:999px;background:#e2e8f0;cursor:pointer;border:0;font-weight:700;font-size:13px;white-space:nowrap}.tab.active{background:#1e293b;color:#fff}.tab small{opacity:.7;font-weight:400}
+.wrap{max-width:1450px;margin:0 auto;padding:12px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 12px;font-size:14px;display:flex;justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px}.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.field label{display:block;font-size:11px;color:#64748b;margin-bottom:4px}.field input,.field select{width:100%;padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px}.field .row{display:flex;gap:4px;align-items:center}.field .row input{flex:1}
+.seg{display:flex;gap:4px}.seg button{flex:1;padding:6px 0;border:1px solid #cbd5e1;background:#fff;border-radius:999px;cursor:pointer;font-size:12px;font-weight:700}.seg button.active{background:#1e293b;color:#fff}
+.logic-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}.logic-row select,.logic-row input{padding:7px;border:1px solid #cbd5e1;border-radius:8px}
+.btn{padding:7px 14px;border-radius:999px;border:0;cursor:pointer;font-weight:700}.btn-blue{background:#2563eb;color:#fff}.btn-gray{background:#e2e8f0}.btn-red{background:#fee2e2;color:#dc2626}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden}th,td{padding:9px 8px;text-align:left;font-size:13px;border-bottom:1px solid #e2e8f0;white-space:nowrap}th{color:#64748b;cursor:pointer;background:#f8fafc}tr:hover{background:#f1f5f9}.up{color:#16a34a}.down{color:#dc2626}.badge{background:#2563eb;color:#fff;padding:2px 7px;border-radius:999px;font-size:11px}.badge.green{background:#16a34a}.badge.orange{background:#ea580c}.badge.gray{background:#64748b}
+@media(max-width:900px){.grid{grid-template-columns:repeat(3,1fr)}}
+</style></head><body>
+<header><div class="tabs" id="presetTabs"></div>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+<div style="display:flex;gap:8px;align-items:center"><button onclick="toggleFilters()" class="btn btn-gray">☰ Filters <span id="activeCount" class="badge">0</span></button><button onclick="document.getElementById('logicCard').scrollIntoView({behavior:'smooth'})" class="btn" style="background:#eff6ff;color:#2563eb;border:1px solid #2563eb">🧩 Logic Builder</button><span id="updated" style="font-size:12px;color:#64748b"></span></div>
+<button onclick="resetAll()" class="btn btn-red">✕ Reset</button></div></header>
+<div class="wrap" id="filterArea">
+
+<!-- LOGIC BUILDER -->
+<div class="card" id="logicCard" style="border:2px solid #2563eb">
+<h3>🧩 Logic Builder - 내 마음대로 조건 조합 <span style="color:#2563eb;font-size:12px">AND / OR 자유롭게</span></h3>
+<div style="font-size:12px;color:#64748b;margin-bottom:8px">예: RS ≥ 80 AND EPS Growth ≥ 25 AND ROE ≥ 17 AND 신고가대비 ≥ -5 → CANSLIM 정석. 조건을 추가하면 아래 표가 바로 바뀜. 파이썬 다시 안 돌려도 됨.</div>
+<div id="logicRows"></div>
+<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+<button onclick="addLogicRow()" class="btn btn-gray">+ 조건 추가 (AND)</button>
+<button onclick="addLogicRow('OR')" class="btn btn-gray">+ 조건 추가 (OR)</button>
+<button onclick="applyLogicPreset('MINERVINI')" class="btn btn-blue">Minervini 불러오기</button>
+<button onclick="applyLogicPreset('CANSLIM')" class="btn btn-blue">CANSLIM 불러오기</button>
+<button onclick="applyLogicPreset('VCP')" class="btn btn-blue">VCP 불러오기</button>
+<button onclick="applyLogicPreset('QULL_EP')" class="btn btn-blue">Qullamaggie EP 불러오기</button>
+<button onclick="applyLogicPreset('QULL_WATCH')" class="btn btn-blue">Qullamaggie Watch 불러오기</button>
+<button onclick="applyLogicPreset('QULL_BREAKOUT')" class="btn btn-blue">Qullamaggie Breakout 불러오기</button>
+<button onclick="applyLogicPreset('QULL_MOM')" class="btn btn-blue">Qullamaggie Momentum 불러오기</button>
+<button onclick="clearLogic()" class="btn btn-red">Logic 초기화</button>
+</div>
+<div style="margin-top:8px"><b>현재 Logic:</b> <span id="logicDesc" style="font-size:13px"></span></div>
+<div style="margin-top:8px;display:flex;gap:8px"><input id="presetName" placeholder="이 조합에 이름 붙이기 (예: 내 CANSLIM)" style="flex:1;padding:7px;border:1px solid #cbd5e1;border-radius:8px"><button onclick="savePreset()" class="btn btn-blue">프리셋으로 저장</button></div>
+<div id="savedPresets" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
+</div>
+
+<!-- FUNDAMENTAL -->
+<div class="card"><h3>🏛 FUNDAMENTAL</h3>
+<div class="grid">
+<div class="field"><label>Symbol</label><input id="f_q" placeholder="삼성, 005930" oninput="render()"></div>
+<div class="field"><label>Mkt Cap (시가총액)</label><select id="f_mcap" onchange="render()"><option value="ALL">All</option><option value="LARGE">대형 (1조+)</option><option value="MID">중형 (3천억~1조)</option><option value="SMALL">소형 (3천억 미만)</option></select></div>
+<div class="field"><label>Dollar Vol (거래대금 억)</label><div class="row"><input type="number" id="f_dvolMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_dvolMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>Price</label><div class="row"><input type="number" id="f_minP" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_maxP" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>EPS Growth % (진짜 재무)</label><div class="row"><span>≥</span><input type="number" id="f_epsg" placeholder="25" oninput="render()"></div></div>
+<div class="field"><label>Sales Growth % (진짜 재무)</label><div class="row"><span>≥</span><input type="number" id="f_salesg" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>EPS Rating (= RS)</label><div class="row"><span>≥</span><input type="number" id="f_epsr" placeholder="0-99" oninput="render()"></div></div>
+</div>
+<div class="grid4" style="margin-top:10px">
+<div class="field"><label>ROE %</label><div class="row"><span>≥</span><input type="number" id="f_roe" placeholder="17" oninput="render()"></div></div>
+<div class="field"><label>PER</label><div class="row"><input type="number" id="f_perMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_perMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>PBR</label><div class="row"><input type="number" id="f_pbrMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_pbrMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>Sector / 업종</label><input id="f_sector" placeholder="반도체, 바이오..." oninput="render()"></div>
+</div>
+<div class="grid4" style="margin-top:10px">
+<div class="field"><label>Market</label><select id="f_market" onchange="render()"><option value="ALL">All</option><option value="KOSPI">KOSPI</option><option value="KOSDAQ">KOSDAQ</option></select></div>
+<div class="field"><label>IPO Age</label><div class="seg" id="ipoSeg"><button onclick="setSeg(this,'ipo','ALL')" class="active">All</button><button onclick="setSeg(this,'ipo','6M')">6M</button><button onclick="setSeg(this,'ipo','1Y')">1Y</button><button onclick="setSeg(this,'ipo','2Y')">2Y+</button></div></div>
+<div class="field"><label>EPS (원)</label><div class="row"><span>≥</span><input type="number" id="f_eps" placeholder="" oninput="render()"></div></div>
+<div class="field"><label>시가총액 (억)</label><div class="row"><input type="number" id="f_mcapMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_mcapMax" placeholder="Max" oninput="render()"></div></div>
+</div></div>
+
+<!-- TECHNICAL -->
+<div class="card"><h3>📈 TECHNICAL</h3>
+<div class="grid">
+<div class="field"><label>ADR %</label><div class="row"><input type="number" id="f_adrMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_adrMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>Stage</label><select id="f_stage" onchange="render()"><option value="ALL">All</option><option value="2">Stage 2 (상승)</option><option value="1">Stage 1 (횡보)</option><option value="4">Stage 4 (하락)</option></select></div>
+<div class="field"><label>RS Rating</label><div class="row"><span>≥</span><input type="number" id="f_rs" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>RS 1M</label><div class="row"><span>≥</span><input type="number" id="f_rs1m" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>RS 3M</label><div class="row"><span>≥</span><input type="number" id="f_rs3m" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>RS 12M</label><div class="row"><span>≥</span><input type="number" id="f_rs12m" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>RS Blue Dot</label><div class="seg" id="blueSeg"><button onclick="setSeg(this,'blue','ALL')" class="active">All</button><button onclick="setSeg(this,'blue','YES')">Yes</button><button onclick="setSeg(this,'blue','NO')">No</button></div></div>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="field"><label>Beta</label><div class="row"><input type="number" id="f_betaMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_betaMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>MA Align</label><div class="seg" id="maSeg"><button onclick="setSeg(this,'ma','ALL')" class="active">All</button><button onclick="setSeg(this,'ma','YES')">Yes</button><button onclick="setSeg(this,'ma','NO')">No</button></div></div>
+<div class="field"><label>Pkt Pivot</label><div class="seg" id="pktSeg"><button onclick="setSeg(this,'pkt','ALL')" class="active">All</button><button onclick="setSeg(this,'pkt','YES')">Yes</button><button onclick="setSeg(this,'pkt','NO')">No</button></div></div>
+<div class="field"><label>Pwr Trend</label><div class="seg" id="pwrSeg"><button onclick="setSeg(this,'pwr','ALL')" class="active">All</button><button onclick="setSeg(this,'pwr','YES')">Yes</button><button onclick="setSeg(this,'pwr','NO')">No</button></div></div>
+<div class="field"><label>1D Chg %</label><div class="row"><span>≥</span><input type="number" id="f_1d" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>1W Chg %</label><div class="row"><span>≥</span><input type="number" id="f_1w" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>1M Chg %</label><div class="row"><span>≥</span><input type="number" id="f_1m" placeholder="%" oninput="render()"></div></div>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="field"><label>Gap %</label><div class="row"><input type="number" id="f_gapMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_gapMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>Vol Surge</label><div class="row"><input type="number" id="f_volMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_volMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>% vs EMA10</label><div class="row"><span>≥</span><input type="number" id="f_vs10" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>% vs EMA20</label><div class="row"><span>≥</span><input type="number" id="f_vs20" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>% vs EMA50</label><div class="row"><span>≥</span><input type="number" id="f_vs50" placeholder="%" oninput="render()"></div></div>
+<div class="field"><label>% from 52W Hi</label><div class="row"><input type="number" id="f_hiMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_hiMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>% from 52W Lo</label><div class="row"><input type="number" id="f_loMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_loMax" placeholder="Max" oninput="render()"></div></div>
+</div></div>
+
+<!-- RATING -->
+<div class="card"><h3>⭐ RATING / SCORE</h3>
+<div class="grid">
+<div class="field"><label>Composite (= RS)</label><div class="row"><span>≥</span><input type="number" id="f_comp" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>Minervini (조건 수)</label><div class="row"><span>≥</span><input type="number" id="f_minv" placeholder="0-8" oninput="render()"></div></div>
+<div class="field"><label>CANSLIM</label><div class="seg" id="cansSeg"><button onclick="setSeg(this,'cans','ALL')" class="active">All</button><button onclick="setSeg(this,'cans','YES')">Yes</button><button onclick="setSeg(this,'cans','NO')">No</button></div></div>
+<div class="field"><label>Squeeze</label><div class="seg" id="sqSeg"><button onclick="setSeg(this,'sq','ALL')" class="active">All</button><button onclick="setSeg(this,'sq','YES')">Yes</button><button onclick="setSeg(this,'sq','NO')">No</button></div></div>
+<div class="field"><label>Vol / 50d</label><div class="row"><input type="number" id="f_v50Min" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_v50Max" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>VCP Score</label><div class="seg" id="vcpSeg"><button onclick="setSeg(this,'vcp','ALL')" class="active">All</button><button onclick="setSeg(this,'vcp','YES')">Yes</button><button onclick="setSeg(this,'vcp','NO')">No</button></div></div>
+<div class="field"><label>SE Ready (신고가+거래량)</label><div class="seg" id="seSeg"><button onclick="setSeg(this,'se','ALL')" class="active">All</button><button onclick="setSeg(this,'se','YES')">Yes</button><button onclick="setSeg(this,'se','NO')">No</button></div></div>
+</div></div>
+</div>
+
+<div class="card"><div><b id="summary"></b></div>
+<table><thead><tr><th onclick="sortBy('market')">시장</th><th onclick="sortBy('name')">종목</th><th>코드</th><th onclick="sortBy('price')">현재가</th><th onclick="sortBy('change')">등락률</th><th onclick="sortBy('volume')">거래량</th><th onclick="sortBy('rs')">RS</th><th onclick="sortBy('eps_growth')">EPS Gr</th><th onclick="sortBy('sales_growth')">Sales Gr</th><th onclick="sortBy('roe')">ROE</th><th onclick="sortBy('ret1y')">1년</th><th onclick="sortBy('high_diff')">신고가대비</th><th onclick="sortBy('vol_ratio')">거래량배율</th><th>Minervini</th><th>판정</th></tr></thead><tbody id="tbody"></tbody></table></div>
+</div>
+
+<script>
+let RAW=[], PRESET='ALL', SORT_KEY='rs', SORT_DESC=true;
+let SEG={ipo:'ALL',blue:'ALL',ma:'ALL',pkt:'ALL',pwr:'ALL',se:'ALL',cans:'ALL',sq:'ALL',vcp:'ALL'};
+let LOGIC=[]; // [{logic:'AND'|'OR', field, op, value}]
+let SAVED=JSON.parse(localStorage.getItem('kr_presets')||'[]');
+const FIELDS=[
+ {v:'rs',label:'RS Rating'},{v:'rs_1m',label:'RS 1M'},{v:'rs_3m',label:'RS 3M'},{v:'rs_12m',label:'RS 12M'},
+ {v:'eps_growth',label:'EPS Growth %'},{v:'sales_growth',label:'Sales Growth %'},{v:'roe',label:'ROE %'},
+ {v:'per',label:'PER'},{v:'pbr',label:'PBR'},{v:'eps',label:'EPS'},
+ {v:'price',label:'Price'},{v:'change',label:'1D Chg %'},{v:'ret1w',label:'1W Chg %'},{v:'ret1m',label:'1M Chg %'},{v:'ret3m',label:'3M Chg %'},{v:'ret6m',label:'6M Chg %'},{v:'ret1y',label:'1Y Chg %'},
+ {v:'vol_ratio',label:'Vol Surge (거래량 배율)'},{v:'vol_50d',label:'Vol / 50d'},{v:'dollar_vol',label:'Dollar Vol (억)'},
+ {v:'high_diff',label:'% from 52W Hi'},{v:'low_diff',label:'% from 52W Lo'},
+ {v:'vs_ema10',label:'% vs EMA10'},{v:'vs_ema20',label:'% vs EMA20'},{v:'vs_ema50',label:'% vs EMA50'},
+ {v:'adr',label:'ADR %'},{v:'beta',label:'Beta'},{v:'vola',label:'변동성 %'},{v:'mcap',label:'시가총액 (억)'},
+];
+const PRESETS=[{id:'ALL',label:'All Stocks'},{id:'MIN',label:'Minervini'},{id:'CANSLIM',label:'CANSLIM'},{id:'VCP',label:'VCP'},{id:'BLUE',label:'Blue Dots'},{id:'VOL',label:'Vol Breakout'},{id:'EPISODIC',label:'Episodic Pivot'},{id:'MOM',label:'Momentum'},{id:'LEADER',label:'Leaders'},{id:'NEWHIGH',label:'New Highs'},{id:'GROWTH',label:'Growth'},{id:'TIGHT',label:'Tight'},{id:'SQUEEZE',label:'Squeeze'},{id:'QULL_EP',label:'Qullamaggie EP'},{id:'QULL_WATCH',label:'Qullamaggie Watch'},{id:'QULL_BREAKOUT',label:'Qullamaggie Breakout'},{id:'QULL_MOM',label:'Qullamaggie Momentum'}];
+function minCount(r){return [r.c1,r.c2,r.c3,r.c4,r.c5,r.c6,r.c7,r.c8].filter(Boolean).length;}
+function isMin(r){return minCount(r)===8 && r.rs>=70;}
+function isCanslim(r){return r.eps_growth>=25 && r.sales_growth>=20 && r.roe>=17 && r.rs>=80 && r.high_diff>=-5 && r.vol_ratio>=1.5;}
+function isVCP(r){return r.vola<2.5 && r.high_diff>=-10 && r.high_diff<=-2 && r.rs>=70;}
+function isBlue(r){return r.high_diff>=-2;}
+function isVolBreak(r){return r.vol_ratio>=2 && r.change>0;}
+function isEpisodic(r){return r.vol_ratio>=3 && r.change>=5;}
+function isMom(r){return r.ret3m>=30 && r.rs>=85;}
+function isLeader(r){return r.rs>=90;}
+function isNewHigh(r){return r.high_diff>=-1;}
+function isGrowth(r){return r.ret1y>=50 && r.eps_growth>=25 && r.rs>=80;}
+function isTight(r){return r.vola<1.5 && Math.abs(r.change)<1;}
+function isSqueeze(r){return r.squeeze===true;}
+function isQullEP(r){return r.change>=5 && r.vol_ratio>=3 && r.high_diff>=-10 && r.rs>=85;}
+function isQullWatch(r){return r.change>=2 && r.vol_ratio>=2 && r.high_diff>=-5 && r.rs>=80;}
+function isQullBreakout(r){return r.high_diff>=-2 && r.high_diff<=0 && r.vol_ratio>=1.5 && r.change>=2 && r.rs>=80 && r.c5;}
+function isQullMom(r){return r.ret3m>=30 && r.rs>=90 && r.high_diff>=-5 && r.vol_ratio>=1.5;}
+function presetFilter(r){
+ if(PRESET==='ALL') return true;
+ if(PRESET==='MIN') return isMin(r);
+ if(PRESET==='CANSLIM') return isCanslim(r);
+ if(PRESET==='VCP') return isVCP(r);
+ if(PRESET==='BLUE') return isBlue(r);
+ if(PRESET==='VOL') return isVolBreak(r);
+ if(PRESET==='EPISODIC') return isEpisodic(r);
+ if(PRESET==='MOM') return isMom(r);
+ if(PRESET==='LEADER') return isLeader(r);
+ if(PRESET==='NEWHIGH') return isNewHigh(r);
+ if(PRESET==='GROWTH') return isGrowth(r);
+ if(PRESET==='TIGHT') return isTight(r);
+ if(PRESET==='SQUEEZE') return isSqueeze(r);
+ if(PRESET==='QULL_EP') return isQullEP(r);
+ if(PRESET==='QULL_WATCH') return isQullWatch(r);
+ if(PRESET==='QULL_BREAKOUT') return isQullBreakout(r);
+ if(PRESET==='QULL_MOM') return isQullMom(r);
+ return true;
+}
+function buildTabs(){
+ let el=document.getElementById('presetTabs');
+ el.innerHTML=PRESETS.map(p=>`<button class="tab ${p.id===PRESET?'active':''}" onclick="setPreset('${p.id}')">${p.label} <small id="cnt-${p.id}"></small></button>`).join('');
+ // 저장된 커스텀 프리셋도 탭으로
+ SAVED.forEach((s,i)=>{ el.innerHTML+=`<button class="tab" style="background:#eff6ff;color:#2563eb;border:1px solid #2563eb" onclick="loadSaved(${i})">${s.name}</button>`; });
+ updateCounts();
+}
+function updateCounts(){
+ if(!RAW.length) return;
+ let c={ALL:RAW.length,MIN:RAW.filter(isMin).length,CANSLIM:RAW.filter(isCanslim).length,VCP:RAW.filter(isVCP).length,BLUE:RAW.filter(isBlue).length,VOL:RAW.filter(isVolBreak).length,EPISODIC:RAW.filter(isEpisodic).length,MOM:RAW.filter(isMom).length,LEADER:RAW.filter(isLeader).length,NEWHIGH:RAW.filter(isNewHigh).length,GROWTH:RAW.filter(isGrowth).length,TIGHT:RAW.filter(isTight).length,SQUEEZE:RAW.filter(isSqueeze).length,QULL_EP:RAW.filter(isQullEP).length,QULL_WATCH:RAW.filter(isQullWatch).length,QULL_BREAKOUT:RAW.filter(isQullBreakout).length,QULL_MOM:RAW.filter(isQullMom).length};
+ for(let k in c){let el=document.getElementById('cnt-'+k); if(el) el.textContent=`(${c[k]})`;}
+}
+function setPreset(p){PRESET=p; buildTabs(); render();}
+function setSeg(btn,key,val){btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); SEG[key]=val; render();}
+function toggleFilters(){let a=document.getElementById('filterArea'); a.style.display=a.style.display==='none'?'block':'none';}
+function sortBy(k){if(SORT_KEY===k) SORT_DESC=!SORT_DESC; else{SORT_KEY=k;SORT_DESC=true;} render();}
+function val(id){let e=document.getElementById(id); return e?e.value:'';}
+function num(id){let v=val(id); return v==='' ? null : parseFloat(v);}
+// Logic Builder
+function addLogicRow(logic='AND'){
+ LOGIC.push({logic, field:'rs', op:'>=', value:80});
+ renderLogic();
+}
+function renderLogic(){
+ let el=document.getElementById('logicRows');
+ if(LOGIC.length===0){ el.innerHTML='<div style="font-size:13px;color:#94a3b8">조건이 없어. 위 버튼으로 추가해봐.</div>'; document.getElementById('logicDesc').textContent='(없음)'; return; }
+ el.innerHTML=LOGIC.map((row,i)=>{
+  let fieldOpts=FIELDS.map(f=>`<option value="${f.v}" ${f.v===row.field?'selected':''}>${f.label}</option>`).join('');
+  let opOpts=['>=','<=','>','<','==','!='].map(o=>`<option ${o===row.op?'selected':''}>${o}</option>`).join('');
+  return `<div class="logic-row"><span class="badge ${i===0?'gray':(row.logic==='AND'?'green':'orange')}">${i===0?'WHERE':row.logic}</span><select onchange="LOGIC[${i}].field=this.value;render()">${fieldOpts}</select><select onchange="LOGIC[${i}].op=this.value;render()">${opOpts}</select><input type="number" value="${row.value}" onchange="LOGIC[${i}].value=parseFloat(this.value);render()" style="width:120px"><button onclick="LOGIC.splice(${i},1);renderLogic();render()" class="btn btn-red">삭제</button></div>`;
+ }).join('');
+ document.getElementById('logicDesc').textContent=LOGIC.map((r,i)=>`${i===0?'':r.logic+' '}${FIELDS.find(f=>f.v===r.field)?.label||r.field} ${r.op} ${r.value}`).join(' ');
+}
+function applyLogicPreset(name){
+ if(name==='MINERVINI'){
+  LOGIC=[
+   {logic:'AND',field:'rs',op:'>=',value:70},
+   {logic:'AND',field:'high_diff',op:'>=',value:-25},
+   {logic:'AND',field:'low_diff',op:'>=',value:30},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:1.0},
+  ];
+ } else if(name==='CANSLIM'){
+  LOGIC=[
+   {logic:'AND',field:'eps_growth',op:'>=',value:25},
+   {logic:'AND',field:'sales_growth',op:'>=',value:20},
+   {logic:'AND',field:'roe',op:'>=',value:17},
+   {logic:'AND',field:'rs',op:'>=',value:80},
+   {logic:'AND',field:'high_diff',op:'>=',value:-5},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:1.5},
+  ];
+ } else if(name==='VCP'){
+  LOGIC=[
+   {logic:'AND',field:'vola',op:'<=',value:2.5},
+   {logic:'AND',field:'high_diff',op:'>=',value:-10},
+   {logic:'AND',field:'high_diff',op:'<=',value:-2},
+   {logic:'AND',field:'rs',op:'>=',value:70},
+  ];
+ } else if(name==='QULL_EP'){
+  LOGIC=[
+   {logic:'AND',field:'change',op:'>=',value:5},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:3},
+   {logic:'AND',field:'high_diff',op:'>=',value:-10},
+   {logic:'AND',field:'rs',op:'>=',value:85},
+  ];
+ } else if(name==='QULL_WATCH'){
+  LOGIC=[
+   {logic:'AND',field:'change',op:'>=',value:2},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:2},
+   {logic:'AND',field:'high_diff',op:'>=',value:-5},
+   {logic:'AND',field:'rs',op:'>=',value:80},
+  ];
+ } else if(name==='QULL_BREAKOUT'){
+  LOGIC=[
+   {logic:'AND',field:'high_diff',op:'>=',value:-2},
+   {logic:'AND',field:'high_diff',op:'<=',value:0},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:1.5},
+   {logic:'AND',field:'change',op:'>=',value:2},
+   {logic:'AND',field:'rs',op:'>=',value:80},
+  ];
+ } else if(name==='QULL_MOM'){
+  LOGIC=[
+   {logic:'AND',field:'ret3m',op:'>=',value:30},
+   {logic:'AND',field:'rs',op:'>=',value:90},
+   {logic:'AND',field:'high_diff',op:'>=',value:-5},
+   {logic:'AND',field:'vol_ratio',op:'>=',value:1.5},
+  ];
+ }
+ renderLogic(); render();
+}
+function clearLogic(){LOGIC=[]; renderLogic(); render();}
+function evalLogic(r){
+ if(LOGIC.length===0) return true;
+ // 첫 조건은 WHERE, 이후 AND/OR로 결합
+ let result=evalOne(r, LOGIC[0]);
+ for(let i=1;i<LOGIC.length;i++){
+  let cur=evalOne(r, LOGIC[i]);
+  if(LOGIC[i].logic==='AND') result=result && cur;
+  else result=result || cur;
+ }
+ return result;
+}
+function evalOne(r, row){
+ let v=r[row.field];
+ if(v===undefined || v===null) return false;
+ let target=row.value;
+ switch(row.op){
+  case '>=': return v>=target;
+  case '<=': return v<=target;
+  case '>': return v>target;
+  case '<': return v<target;
+  case '==': return v==target;
+  case '!=': return v!=target;
+ }
+ return false;
+}
+function savePreset(){
+ let name=document.getElementById('presetName').value.trim();
+ if(!name){alert('이름을 입력해줘'); return;}
+ if(LOGIC.length===0){alert('Logic 조건을 먼저 추가해줘'); return;}
+ SAVED.push({name, logic: JSON.parse(JSON.stringify(LOGIC))});
+ localStorage.setItem('kr_presets', JSON.stringify(SAVED));
+ document.getElementById('presetName').value='';
+ renderSaved(); buildTabs(); alert(`프리셋 "${name}" 저장됨`);
+}
+function renderSaved(){
+ let el=document.getElementById('savedPresets');
+ if(SAVED.length===0){el.innerHTML=''; return;}
+ el.innerHTML=SAVED.map((s,i)=>`<button class="btn btn-gray" onclick="loadSaved(${i})">${s.name}</button><button class="btn btn-red" onclick="SAVED.splice(${i},1);localStorage.setItem('kr_presets',JSON.stringify(SAVED));renderSaved();buildTabs()">✕</button>`).join(' ');
+}
+function loadSaved(i){
+ LOGIC=JSON.parse(JSON.stringify(SAVED[i].logic));
+ renderLogic(); render();
+}
+function resetAll(){
+ document.querySelectorAll('input').forEach(e=>{if(e.id!=='presetName') e.value='';});
+ document.querySelectorAll('select').forEach(e=>e.selectedIndex=0);
+ SEG={ipo:'ALL',blue:'ALL',ma:'ALL',pkt:'ALL',pwr:'ALL',se:'ALL',cans:'ALL',sq:'ALL',vcp:'ALL'};
+ document.querySelectorAll('.seg').forEach(s=>{s.querySelectorAll('button').forEach((b,j)=>b.classList.toggle('active',j===0));});
+ LOGIC=[]; renderLogic(); PRESET='ALL'; buildTabs(); render();
+}
+async function load(){
+ try{
+  let res=await fetch('data.json'); let j=await res.json(); RAW=j.data||[];
+  document.getElementById('updated').textContent=`업데이트: ${j.updated} · 전체 ${j.count}개 · 코스피 1년 ${j.kospi_ret_1y}% · EPS/ROE/업종 포함`;
+ }catch(e){
+  document.getElementById('updated').textContent='❌ data.json 없음. python screener_data.py 먼저 실행';
+ }
+ buildTabs(); renderLogic(); renderSaved(); render();
+}
+function render(){
+ if(!RAW.length){document.getElementById('tbody').innerHTML='<tr><td colspan="15">데이터 없음</td></tr>'; return;}
+ let q=val('f_q').toLowerCase();
+ let rows=RAW.filter(r=>{
+  if(!presetFilter(r)) return false;
+  if(!evalLogic(r)) return false;
+  if(val('f_market')!=='ALL' && r.market!==val('f_market')) return false;
+  if(q && !(r.name.toLowerCase().includes(q) || r.code.includes(q) || (r.sector||'').toLowerCase().includes(q))) return false;
+  if(num('f_minP')!==null && r.price<num('f_minP')) return false;
+  if(num('f_maxP')!==null && r.price>num('f_maxP')) return false;
+  if(num('f_epsg')!==null && r.eps_growth<num('f_epsg')) return false;
+  if(num('f_salesg')!==null && r.sales_growth<num('f_salesg')) return false;
+  if(num('f_epsr')!==null && r.rs<num('f_epsr')) return false;
+  if(num('f_roe')!==null && r.roe<num('f_roe')) return false;
+  if(num('f_perMin')!==null && r.per<num('f_perMin')) return false;
+  if(num('f_perMax')!==null && r.per>num('f_perMax')) return false;
+  if(num('f_pbrMin')!==null && r.pbr<num('f_pbrMin')) return false;
+  if(num('f_pbrMax')!==null && r.pbr>num('f_pbrMax')) return false;
+  if(num('f_eps')!==null && r.eps<num('f_eps')) return false;
+  if(val('f_sector') && !(r.sector||'').toLowerCase().includes(val('f_sector').toLowerCase())) return false;
+  if(num('f_dvolMin')!==null && r.dollar_vol<num('f_dvolMin')) return false;
+  if(num('f_dvolMax')!==null && r.dollar_vol>num('f_dvolMax')) return false;
+  if(num('f_mcapMin')!==null && r.mcap<num('f_mcapMin')) return false;
+  if(num('f_mcapMax')!==null && r.mcap>num('f_mcapMax')) return false;
+  if(val('f_mcap')==='LARGE' && r.mcap<10000) return false;
+  if(val('f_mcap')==='MID' && (r.mcap<3000 || r.mcap>=10000)) return false;
+  if(val('f_mcap')==='SMALL' && r.mcap>=3000) return false;
+  if(num('f_rs')!==null && r.rs<num('f_rs')) return false;
+  if(num('f_rs1m')!==null && r.rs_1m<num('f_rs1m')) return false;
+  if(num('f_rs3m')!==null && r.rs_3m<num('f_rs3m')) return false;
+  if(num('f_rs12m')!==null && r.rs_12m<num('f_rs12m')) return false;
+  if(num('f_1d')!==null && r.change<num('f_1d')) return false;
+  if(num('f_1w')!==null && r.ret1w<num('f_1w')) return false;
+  if(num('f_1m')!==null && r.ret1m<num('f_1m')) return false;
+  if(num('f_volMin')!==null && r.vol_ratio<num('f_volMin')) return false;
+  if(num('f_volMax')!==null && r.vol_ratio>num('f_volMax')) return false;
+  if(num('f_hiMin')!==null && r.high_diff<num('f_hiMin')) return false;
+  if(num('f_hiMax')!==null && r.high_diff>num('f_hiMax')) return false;
+  if(num('f_loMin')!==null && r.low_diff<num('f_loMin')) return false;
+  if(num('f_loMax')!==null && r.low_diff>num('f_loMax')) return false;
+  if(num('f_gapMin')!==null && r.change<num('f_gapMin')) return false;
+  if(num('f_gapMax')!==null && r.change>num('f_gapMax')) return false;
+  if(num('f_vs10')!==null && r.vs_ema10<num('f_vs10')) return false;
+  if(num('f_vs20')!==null && r.vs_ema20<num('f_vs20')) return false;
+  if(num('f_vs50')!==null && r.vs_ema50<num('f_vs50')) return false;
+  if(num('f_adrMin')!==null && r.adr<num('f_adrMin')) return false;
+  if(num('f_adrMax')!==null && r.adr>num('f_adrMax')) return false;
+  if(num('f_betaMin')!==null && r.beta<num('f_betaMin')) return false;
+  if(num('f_betaMax')!==null && r.beta>num('f_betaMax')) return false;
+  if(num('f_pvtMin')!==null && r.high_diff<num('f_pvtMin')) return false;
+  if(num('f_pvtMax')!==null && r.high_diff>num('f_pvtMax')) return false;
+  if(num('f_v50Min')!==null && r.vol_50d<num('f_v50Min')) return false;
+  if(num('f_v50Max')!==null && r.vol_50d>num('f_v50Max')) return false;
+  if(num('f_comp')!==null && r.rs<num('f_comp')) return false;
+  if(num('f_minv')!==null && minCount(r)<num('f_minv')) return false;
+  if(SEG.blue==='YES' && !isBlue(r)) return false;
+  if(SEG.blue==='NO' && isBlue(r)) return false;
+  if(SEG.ma==='YES' && !r.c5) return false;
+  if(SEG.ma==='NO' && r.c5) return false;
+  if(SEG.pkt==='YES' && r.vol_ratio<1.5) return false;
+  if(SEG.pkt==='NO' && r.vol_ratio>=1.5) return false;
+  if(SEG.pwr==='YES' && !(r.rs>=80 && r.c5)) return false;
+  if(SEG.pwr==='NO' && (r.rs>=80 && r.c5)) return false;
+  if(SEG.cans==='YES' && !isCanslim(r)) return false;
+  if(SEG.cans==='NO' && isCanslim(r)) return false;
+  if(SEG.sq==='YES' && !r.squeeze) return false;
+  if(SEG.sq==='NO' && r.squeeze) return false;
+  if(SEG.vcp==='YES' && !isVCP(r)) return false;
+  if(SEG.vcp==='NO' && isVCP(r)) return false;
+  if(SEG.se==='YES' && !(r.high_diff>=-2 && r.vol_ratio>=1.5)) return false;
+  if(SEG.se==='NO' && (r.high_diff>=-2 && r.vol_ratio>=1.5)) return false;
+  let stage = minCount(r)===8 ? '2' : (minCount(r)<=3 ? '4' : '1');
+  if(val('f_stage')!=='ALL' && stage!==val('f_stage')) return false;
+  // IPO Age: data_days로 추정 (252일 미만이면 신규)
+  if(SEG.ipo==='6M' && r.data_days>180) return false;
+  if(SEG.ipo==='1Y' && r.data_days>365) return false;
+  if(SEG.ipo==='2Y' && r.data_days<500) return false;
+  return true;
+ });
+ rows.sort((a,b)=> SORT_DESC ? (b[SORT_KEY]||0)-(a[SORT_KEY]||0) : (a[SORT_KEY]||0)-(b[SORT_KEY]||0));
+ document.getElementById('summary').textContent=`전체 ${RAW.length}개 · Minervini ${RAW.filter(isMin).length}개 · CANSLIM(진짜 EPS) ${RAW.filter(isCanslim).length}개 · 보이는 거 ${rows.length}개`;
+ document.getElementById('activeCount').textContent=rows.length;
+ document.getElementById('tbody').innerHTML=rows.slice(0,500).map(r=>{
+  let mc=minCount(r);
+  let badge=isMin(r)?'<span class="badge green">MIN 8/8</span>':(mc>=7?'<span class="badge orange">MIN '+mc+'/8</span>':mc+'/8');
+  let cans=isCanslim(r)?'<span class="badge">CANSLIM</span>':'';
+  let vcp=isVCP(r)?'<span class="badge gray">VCP</span>':'';
+  return `<tr><td>${r.market}</td><td><b>${r.name}</b><br><span style="font-size:11px;color:#94a3b8">${r.sector||''}</span></td><td>${r.code}</td><td>${r.price.toLocaleString()}원</td><td class="${r.change>=0?'up':'down'}">${r.change}%</td><td>${r.volume}억</td><td>${r.rs}</td><td>${r.eps_growth}%</td><td>${r.sales_growth}%</td><td>${r.roe}%</td><td>${r.ret1y}%</td><td>${r.high_diff}%</td><td>${r.vol_ratio}배</td><td>${badge}</td><td>${cans} ${vcp}</td></tr>`;
+ }).join('')||'<tr><td colspan="15">조건에 맞는 종목이 없습니다.</td></tr>';
+}
+load();
+</script></body></html>

@@ -3,7 +3,7 @@
 # 결과: data.json (MA 6종 + 재무 + 기술지표 전부)
 # 추가: 스마트 업데이트 + ADH-VCP (ETF 없음, 원본 Naver 방식 유지)
 
-import pandas as pd, requests, time, math, os, json
+import pandas as pd, requests, time, math, os, json, re, urllib3, threading
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -15,6 +15,30 @@ MIN_PRICE = 1000
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://m.stock.naver.com/"}
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
+# ★ 회사 프록시 self-signed 인증서 때문에 Yahoo가 SSL 에러 나면 이거 필수
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+SESSION.verify = False
+
+# ★★★ Crumb 1번만 받기 — 종목마다 받으면 2500번 요청이라 느려짐 ★★★
+_CRUMB = None
+_CRUMB_LOCK = threading.Lock()
+def get_crumb():
+    global _CRUMB
+    if _CRUMB is not None:
+        return _CRUMB
+    with _CRUMB_LOCK:
+        if _CRUMB is not None:
+            return _CRUMB
+        try:
+            SESSION.get("https://fc.yahoo.com", timeout=10, verify=False)
+            rc = SESSION.get("https://query1.finance.yahoo.com/v1/test/getcrumb", timeout=10, verify=False)
+            if rc.status_code == 200 and len(rc.text) < 100:
+                _CRUMB = rc.text.strip()
+                return _CRUMB
+        except:
+            pass
+        _CRUMB = ""
+        return _CRUMB
 
 # ---------- 스마트 업데이트 ----------
 def is_market_closed():
@@ -124,32 +148,51 @@ def parse_float(v):
     except:
         return 0.0
 
-# ---------- ETF / ETN / 리츠 / 스팩 제외 ----------
-# 전에는 이름에 단어가 들어가면 빼는 방식이라 새 브랜드가 다 샜음.
-# 이제는 브랜드 접두어 + 포함 키워드 2단계로 나눔.
-# BNK처럼 진짜 주식을 빼버리던 과한 키워드는 뺐음.
+def parse_float_or_none(v):
+    # ★ 재무용: 못 읽으면 0이 아니라 None
+    if v is None or v == "":
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        s = str(v).replace(",", "").replace("%", "").replace("원", "").replace(" ", "").strip()
+        if s == "" or s == "-":
+            return None
+        return float(s)
+    except:
+        return None
+
+# ---------- ETF / ETN / 리츠 / 스팩 / 인프라 / 인덱스펀드 제외 ----------
+# ★ 이름에 ETF가 없어도 잡는 게 핵심: TIME/WON/파워/액티브/인덱스/인프라/코스피200
 ETF_PREFIXES = [
     "TIGER", "KODEX", "RISE", "KBSTAR", "ARIRANG", "ACE", "HANARO", "SOL",
     "KINDEX", "KOSEF", "TREX", "PLUS", "TIMEFOLIO", "KoAct", "KOACT",
     "1Q", "WOORI", "HANA", "SHINHAN", "MIRAE", "MIRAEASSET",
     "NH-", "DAISHIN", "FOCUS", "MASTER", "HK", "KIWOOM", "BETA",
     "VALUE", "PULSE", "BULLS", "BEARS", "TIGER ", "KODEX ",
+    # ★ 스크린샷에서 새는 브랜드들 — 진짜 회사랑 겹치지 않게 좁게
+    "TIME", "WON", "MIDAS", "UNICORN", "마이티", "파워",
+    "맥쿼리", "KB발해", "맵스", "IBK", "BNK", "TRUSTON",
+    "대신", "유진", "에셋플러스", "마이다스",
 ]
 ETF_CONTAINS = [
     "ETF", "ETN", "리츠", "REITS", "스팩", "SPAC",
     "인버스", "레버리지", "KOFR", "머니마켓", "CD금리", "국고채",
     "채권", "달러", "미국배당", "다우존스", "S&P", "나스닥",
     "선물", "인버스", "곱버스",
+    # ★ 이름만 봐도 펀드인 경우
+    "액티브", "인덱스", "인프라", "부동산",
+    "코스피", "코스닥", "KOSPI", "KOSDAQ",
+    "200TR", " 200", " 100", " 150", "K200", "K100",
+    "X클래스", "배당액티브", "고배당",
 ]
 def is_etf_name(name):
     if not name:
         return True
     n = str(name).strip()
-    # 1. 브랜드 접두어: 이름이 ETF 브랜드로 시작하면 ETF
     for p in ETF_PREFIXES:
         if n.startswith(p):
             return True
-    # 2. 포함 키워드: 이름 안에 ETF/ETN/리츠 등이 있으면 ETF
     for k in ETF_CONTAINS:
         if k in n:
             return True
@@ -175,7 +218,6 @@ def get_list():
                     name = s.get("stockName") or s.get("name")
                     if not code or not name:
                         continue
-                    # 1차: 이름으로 ETF 제외
                     if is_etf_name(name):
                         continue
                     mcap = parse_int(s.get("marketValue") or s.get("marketCap") or 0)
@@ -191,59 +233,160 @@ def get_list():
         print(f"  {market}: {cnt}개")
     return out
 
+# ★★★ 네이버 재무 (PBR / 부채비율 / 당좌비율) — 구조 확인됨 ★★★
+# 주소: https://m.stock.naver.com/api/stock/{code}/finance/annual (200 OK, 나머지 주소는 404/409)
+# 구조: financeInfo.rowList[] = {"title": "PBR", "columns": {"202512": {"value": "1.87"}, ...}}
+# 연도: trTitleList에서 isConsensus=="Y"(예상치) 제외하고 마지막 실제 연도 key 사용
+# ★ 유동비율은 네이버 annual에 없음. 당좌비율로 대체.
+def fetch_naver_finance(code):
+    """returns (pbr, debt_ratio, quick_ratio) — 못 구하면 None"""
+    try:
+        url = f"https://m.stock.naver.com/api/stock/{code}/finance/annual"
+        r = SESSION.get(url, timeout=10)
+        if r.status_code != 200:
+            return None, None, None
+        j = r.json()
+        fi = j.get("financeInfo", {}) or {}
+        titles = fi.get("trTitleList", []) or []
+        rows = fi.get("rowList", []) or []
+        if not titles or not rows:
+            return None, None, None
+
+        # 최신 실제 연도 key (컨센서스 Y 제외, 없으면 마지막)
+        target_key = None
+        for t in titles:
+            if t.get("isConsensus") != "Y":
+                target_key = t.get("key")
+        if target_key is None and titles:
+            target_key = titles[-1].get("key")
+
+        def _row_value(want):
+            for row in rows:
+                title = str(row.get("title", "")).strip()
+                if title == want or want in title:
+                    cols = row.get("columns", {}) or {}
+                    cell = cols.get(target_key, {}) or {}
+                    v = cell.get("value")
+                    if v is None or str(v).strip() in ("", "-", "N/A"):
+                        return None
+                    try:
+                        return float(str(v).replace(",", "").replace("%", "").strip())
+                    except:
+                        return None
+            return None
+
+        pbr = _row_value("PBR")
+        debt = _row_value("부채비율")
+        if debt is None:
+            debt = _row_value("부채")
+        # ★ 유동비율 없음 → 당좌비율
+        quick = _row_value("당좌비율")
+        return pbr, debt, quick
+    except:
+        return None, None, None
+
+# ★★★ 재무 — v6 (당좌비율로 교체) ★★★
+# EPS/PER/성장률/ROE = Yahoo 손익계산서 원본 (순이익은 이미 원 단위라 ×1000 금지)
+# PBR/부채/당좌 = 네이버 재무 (Yahoo 대차대조표는 비어 있음, 네이버 annual에 유동비율 없음)
 def fetch_fundamental(code):
     cache_file = os.path.join(CACHE_DIR, f"fund_{code}.json")
     if os.path.exists(cache_file):
         try:
             if datetime.fromtimestamp(os.path.getmtime(cache_file)).strftime("%Y-%m-%d") == datetime.now().strftime("%Y-%m-%d"):
                 with open(cache_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    cached = json.load(f)
+                # ★ v:6 아니면 옛날 캐시(current_ratio 들어있음) — 다시 받아옴
+                if cached.get("v") != 6:
+                    raise ValueError("old cache")
+                vals = [cached.get("eps"), cached.get("per"), cached.get("pbr"), cached.get("roe"),
+                        cached.get("eps_growth"), cached.get("sales_growth")]
+                if not all(v is None or v == 0 for v in vals):
+                    return cached
         except:
             pass
     try:
-        url = f"https://api.stock.naver.com/stock/{code}/basic"
-        r = SESSION.get(url, timeout=8)
-        basic = r.json() if r.status_code == 200 else {}
-        url2 = f"https://api.stock.naver.com/stock/{code}/finance/quarter"
-        r2 = SESSION.get(url2, timeout=8)
-        fin = r2.json() if r2.status_code == 200 else {}
-        eps = 0; per = 0; pbr = 0; roe = 0; sector = ""; mcap2 = 0
-        try:
-            if isinstance(basic, dict):
-                eps = parse_float(basic.get("eps", 0))
-                per = parse_float(basic.get("per", 0))
-                pbr = parse_float(basic.get("pbr", 0))
-                roe = parse_float(basic.get("roe", 0))
-                sector = basic.get("industryName", "") or basic.get("sector", "") or ""
-                mcap2 = parse_int(basic.get("marketValue", 0) or basic.get("marketCap", 0) or 0)
-        except:
-            pass
-        eps_growth = 0; sales_growth = 0
-        try:
-            rows = []
-            if isinstance(fin, dict):
-                rows = fin.get("financeInfo", []) or fin.get("data", []) or []
-            elif isinstance(fin, list):
-                rows = fin
-            if len(rows) >= 5:
-                def getf(row, *keys):
-                    for k in keys:
-                        if k in row and row[k] is not None:
-                            return parse_float(row[k])
-                    return 0
-                cur_eps = getf(rows[0], "eps", "EPS", "netProfit")
-                prev_eps = getf(rows[4], "eps", "EPS", "netProfit")
-                if prev_eps != 0:
-                    eps_growth = (cur_eps - prev_eps) / abs(prev_eps) * 100
-                cur_rev = getf(rows[0], "revenue", "sales", "Revenue")
-                prev_rev = getf(rows[4], "revenue", "sales", "Revenue")
-                if prev_rev != 0:
-                    sales_growth = (cur_rev - prev_rev) / abs(prev_rev) * 100
-        except:
-            pass
-        result = {"eps": round(eps,1), "per": round(per,2), "pbr": round(pbr,2), "roe": round(roe,1),
-                "eps_growth": round(float(eps_growth),1), "sales_growth": round(float(sales_growth),1),
-                "sector": sector, "mcap_api": parse_int(mcap2)}
+        h = {"User-Agent": "Mozilla/5.0"}
+        eps = per = pbr = roe = eps_growth = sales_growth = None
+        debt_ratio = quick_ratio = None
+        sector = ""
+        mcap2 = 0
+        crumb = get_crumb()
+        for suffix in [".KS", ".KQ"]:
+            try:
+                url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{code}{suffix}?modules=price,summaryDetail,financialData,defaultKeyStatistics,assetProfile,incomeStatementHistory&crumb={crumb}"
+                r = SESSION.get(url, headers=h, timeout=10, verify=False)
+                if r.status_code != 200:
+                    continue
+                j = r.json()
+                res = j.get("quoteSummary", {}).get("result", [{}])[0]
+                if not res:
+                    continue
+                fin = res.get("financialData", {}) or {}
+                stat = res.get("defaultKeyStatistics", {}) or {}
+                prof = res.get("assetProfile", {}) or {}
+                price_d = res.get("price", {}) or {}
+                summ = res.get("summaryDetail", {}) or {}
+                def _raw(d, k):
+                    v = d.get(k, {}) if isinstance(d, dict) else {}
+                    return v.get("raw") if isinstance(v, dict) else v
+
+                # ★ ROE만 Yahoo 계산값 씀 — 비율이라 단위 안 깨짐
+                roe_v = _raw(fin, "returnOnEquity")
+                roe = float(roe_v) * 100 if roe_v is not None else None
+                sector = prof.get("sector", "") or prof.get("industry", "") or ""
+                cur_price = _raw(price_d, "regularMarketPrice") or _raw(summ, "previousClose")
+                mcap_raw = _raw(summ, "marketCap") or _raw(price_d, "marketCap")
+                if mcap_raw is not None:
+                    mcap2 = int(float(mcap_raw) // 100000000)
+                shares = _raw(stat, "sharesOutstanding") or _raw(summ, "sharesOutstanding")
+
+                # ★★★ EPS / PER / 성장률 — incomeStatementHistory 원본 ★★★
+                inc = res.get("incomeStatementHistory", {}) or {}
+                stmts = inc.get("incomeStatementHistory", []) or []
+                if len(stmts) >= 2:
+                    cur_rev = _raw(stmts[0], "totalRevenue")
+                    prev_rev = _raw(stmts[1], "totalRevenue")
+                    cur_net = _raw(stmts[0], "netIncome")
+                    prev_net = _raw(stmts[1], "netIncome")
+                    if cur_rev is not None and prev_rev not in (None, 0):
+                        sales_growth = (float(cur_rev) - float(prev_rev)) / abs(float(prev_rev)) * 100
+                    if cur_net is not None and prev_net not in (None, 0):
+                        eps_growth = (float(cur_net) - float(prev_net)) / abs(float(prev_net)) * 100
+                    # EPS = 순이익(원) / 주식수 — ★ ×1000 금지 (진단: 44조/주식수=7752가 진짜 EPS)
+                    if cur_net is not None and shares not in (None, 0):
+                        eps = float(cur_net) / float(shares)
+                        # PER = 주가 / EPS — EPS 음수면 PER 음수 그대로 (적자라서 정상)
+                        if cur_price is not None and eps != 0:
+                            per = float(cur_price) / float(eps)
+
+                if roe is not None or eps_growth is not None or sales_growth is not None:
+                    break
+            except:
+                continue
+        # ★★★ PBR / 부채비율 / 당좌비율 — 네이버 재무 ★★★
+        if pbr is None or debt_ratio is None or quick_ratio is None:
+            nav_pbr, nav_debt, nav_quick = fetch_naver_finance(code)
+            if pbr is None and nav_pbr is not None:
+                pbr = nav_pbr
+            if debt_ratio is None and nav_debt is not None:
+                debt_ratio = nav_debt
+            if quick_ratio is None and nav_quick is not None:
+                quick_ratio = nav_quick
+        result = {"v": 6,
+                  "eps": round(eps, 1) if eps is not None else None,
+                  "per": round(per, 2) if per is not None else None,
+                  "pbr": round(pbr, 2) if pbr is not None else None,
+                  "roe": round(roe, 1) if roe is not None else None,
+                  "eps_growth": round(float(eps_growth), 1) if eps_growth is not None else None,
+                  "sales_growth": round(float(sales_growth), 1) if sales_growth is not None else None,
+                  "debt_ratio": round(float(debt_ratio), 1) if debt_ratio is not None else None,
+                  "quick_ratio": round(float(quick_ratio), 1) if quick_ratio is not None else None,
+                  "sector": sector, "mcap_api": parse_int(mcap2)}
+        vals2 = [result["eps"], result["per"], result["pbr"], result["roe"],
+                 result["eps_growth"], result["sales_growth"],
+                 result["debt_ratio"], result["quick_ratio"]]
+        if all(v is None for v in vals2):
+            return result
         try:
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False)
@@ -251,7 +394,10 @@ def fetch_fundamental(code):
             pass
         return result
     except:
-        return {"eps": 0, "per": 0, "pbr": 0, "roe": 0, "eps_growth": 0, "sales_growth": 0, "sector": "", "mcap_api": 0}
+        return {"v": 6, "eps": None, "per": None, "pbr": None, "roe": None,
+                "eps_growth": None, "sales_growth": None,
+                "debt_ratio": None, "quick_ratio": None,
+                "sector": "", "mcap_api": 0}
 
 def fetch_price(code):
     cache_file = os.path.join(CACHE_DIR, f"{code}.csv")
@@ -369,9 +515,11 @@ def calc_all(code, name, market, mcap_list, df, kospi_ret, fund):
         "rel_ret": round(float(ret1y-kospi_ret),1),
         "vola": round(vola,2), "adr": round(adr,2), "beta": beta, "bb_width": round(bb_width,2), "squeeze": squeeze,
         "stage": stage,
-        "eps": fund.get("eps",0), "per": fund.get("per",0), "pbr": fund.get("pbr",0), "roe": fund.get("roe",0),
-        "eps_growth": fund.get("eps_growth",0), "sales_growth": fund.get("sales_growth",0),
-        "sector": fund.get("sector",""), "mcap": int(mcap),
+        # ★ 재무: None이면 None 그대로 — 0으로 바꾸지 않음
+        "eps": fund.get("eps"), "per": fund.get("per"), "pbr": fund.get("pbr"), "roe": fund.get("roe"),
+        "eps_growth": fund.get("eps_growth"), "sales_growth": fund.get("sales_growth"),
+        "debt_ratio": fund.get("debt_ratio"), "quick_ratio": fund.get("quick_ratio"),
+        "sector": fund.get("sector","") or "", "mcap": int(mcap),
         "c1": bool(close>sma[150]), "c2": bool(close>sma[200]), "c3": bool(sma[150]>sma[200]), "c4": bool(sma[200]>sma200_20),
         "c5": bool(sma[50]>sma[150]>sma[200]), "c6": bool(close>sma[50]), "c7": bool(close>=low52*1.3), "c8": bool(close>=high52*0.75),
         "data_days": int(len(df)),
@@ -415,7 +563,8 @@ if __name__ == "__main__":
             if df is not None:
                 price_map[code] = (name, market, mcap, df)
     print(f"✅ 가격 완료: {len(price_map)}개")
-    print("2단계: 재무 데이터 수집 (EPS, ROE, PER, 업종) - 30개 병렬...")
+    print("2단계: 재무 데이터 수집 (EPS, ROE, PER, 업종) - 12개 병렬...")
+    get_crumb()  # ★ 여기서 1번만 미리 받아두면, 스레드들이 경합할 일이 없음
     def _do_one(item):
         code, (name, market, mcap, df) = item
         try:
@@ -424,7 +573,7 @@ if __name__ == "__main__":
             return calc
         except Exception:
             return None
-    with ThreadPoolExecutor(max_workers=30) as ex:
+    with ThreadPoolExecutor(max_workers=12) as ex:
         futs = {ex.submit(_do_one, item): item[0] for item in price_map.items()}
         done = 0
         for fut in as_completed(futs):
@@ -442,6 +591,29 @@ if __name__ == "__main__":
         s = sorted(results, key=lambda x: x[key])
         for i, r in enumerate(s):
             r[rskey] = int((i+1)/len(s)*99) if len(s) > 0 else 0
+    # ★★★ EPS Rating / Composite 새로 계산 — RS 만드는 방식이랑 똑같음 ★★★
+    # EPS Rating = eps_growth 순위 (None은 제외, None이면 eps_rating도 None)
+    eps_valid = sorted([r for r in results if r.get("eps_growth") is not None], key=lambda x: x["eps_growth"])
+    ne = len(eps_valid)
+    for i, r in enumerate(eps_valid):
+        r["eps_rating"] = int((i+1)/ne*99) if ne > 0 else None
+    for r in results:
+        if "eps_rating" not in r:
+            r["eps_rating"] = None
+    # ROE 순위 = roe 순위 (Composite 재료용, 패널에 안 보여도 됨)
+    roe_valid = sorted([r for r in results if r.get("roe") is not None], key=lambda x: x["roe"])
+    nr = len(roe_valid)
+    for i, r in enumerate(roe_valid):
+        r["roe_rating"] = int((i+1)/nr*99) if nr > 0 else None
+    for r in results:
+        if "roe_rating" not in r:
+            r["roe_rating"] = None
+    # RS Rating = rs 그대로 (패널에서 읽는 이름 맞추기용)
+    # Composite = (RS + EPS Rating + ROE 순위) / 3, 없는 건 빼고 있는 것만 평균
+    for r in results:
+        r["rs_rating"] = r.get("rs")
+        vals = [v for v in [r.get("rs"), r.get("eps_rating"), r.get("roe_rating")] if v is not None]
+        r["composite"] = int(sum(vals)/len(vals)) if vals else None
     out = {"updated": datetime.now().strftime("%Y-%m-%d %H:%M"), "kospi_ret_1y": round(float(kospi_ret),1), "count": len(results), "data": results}
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)

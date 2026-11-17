@@ -1,6 +1,7 @@
 # screener_data.py - MA 10/20/50/100/150/200 전부 미리 계산 (FAST 모드 없음)
 # 실행: python screener_data.py
 # 결과: data.json (MA 6종 + 재무 + 기술지표 전부)
+# 추가: 스마트 업데이트 + ADH-VCP (ETF 없음, 원본 Naver 방식 유지)
 
 import pandas as pd, requests, time, math, os, json
 from datetime import datetime, timedelta
@@ -14,6 +15,88 @@ MIN_PRICE = 1000
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Referer": "https://m.stock.naver.com/"}
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
+
+# ---------- 스마트 업데이트 ----------
+def is_market_closed():
+    now = datetime.now()
+    if now.weekday() >= 5:  # 토/일
+        return True
+    return now.hour >= 16
+
+def needs_update():
+    if not os.path.exists("data.json"):
+        return True, "data.json 없음 -> 처음부터 받기"
+    try:
+        with open("data.json", "r", encoding="utf-8") as f:
+            j = json.load(f)
+    except Exception:
+        return True, "data.json 깨짐 -> 처음부터 받기"
+    updated_raw = str(j.get("updated", ""))
+    updated = updated_raw[:10]  # "2026-11-17 06:49" -> "2026-11-17"
+    today = datetime.now().strftime("%Y-%m-%d")
+    if updated == today and is_market_closed():
+        return False, f"이미 오늘({today}) 데이터임 -> 스킵"
+    if updated == today and not is_market_closed():
+        return True, "오늘 데이터지만 장 중이라 갱신 필요"
+    return True, f"오래된 데이터({updated_raw}) -> 갱신 필요"
+
+# ---------- ADH-VCP (Pine Script 그대로) ----------
+def calc_adh(df):
+    out = {'adh_depth': None, 'adh_contractions': 0, 'adh_last_c_pct': None,
+           'adh_dist_line': None, 'adh_coil_range': None, 'adh_vdu': False,
+           'adh_base_age': None, 'adh_sl': None, 'adh_trendline': None}
+    if df is None or len(df) < 60:
+        return out
+    try:
+        highs = df["High"].values; lows = df["Low"].values
+        closes = df["Close"].values; vols = df["Volume"].values
+    except Exception:
+        return out
+    n = len(df); look = 21
+    h1_idx = int((n - look) + highs[n - look:].argmax())
+    h1 = float(highs[h1_idx]); base_low = float(lows[h1_idx:].min())
+    depth = (h1 - base_low) / h1 * 100 if h1 else 999
+    out['adh_depth'] = round(float(depth), 2)
+    out['adh_base_age'] = int(n - 1 - h1_idx)
+    if depth > 35:
+        out['adh_dist_line'] = round(float((h1 - closes[-1]) / h1 * 100), 2)
+        return out
+    pivots = []
+    for i in range(3, n - 3):
+        if highs[i] == max(highs[i-3:i+4]) and highs[i] < h1 and highs[i] > base_low and i > h1_idx:
+            pivots.append((i, float(highs[i])))
+    pivots = [p for j, p in enumerate(pivots) if j == 0 or p[1] != pivots[j-1][1]]
+    contractions = 0; last_c_pct = None; last_c_low = None
+    c1 = (h1 - base_low) / h1 * 100
+    if c1 > 0:
+        contractions = 1; last_c_pct = c1; last_c_low = base_low
+    for k, (p_idx, p_price) in enumerate(pivots):
+        end = pivots[k+1][0] if k + 1 < len(pivots) else n
+        if end <= p_idx: continue
+        seg_low = float(lows[p_idx:end].min())
+        if seg_low < p_price:
+            c_pct = (p_price - seg_low) / p_price * 100
+            if c_pct > 0:
+                contractions += 1; last_c_pct = c_pct; last_c_low = seg_low
+    out['adh_contractions'] = int(contractions)
+    out['adh_last_c_pct'] = round(float(last_c_pct), 2) if last_c_pct is not None else None
+    if pivots:
+        px_idx, px_price = pivots[-1]
+        trendline = h1 + (px_price - h1) / (px_idx - h1_idx) * ((n - 1) - h1_idx) if px_idx != h1_idx else h1
+    else:
+        trendline = h1
+    out['adh_trendline'] = round(float(trendline), 1)
+    close = float(closes[-1])
+    out['adh_dist_line'] = round(float((trendline - close) / trendline * 100), 2) if trendline else None
+    coil_hi = float(highs[-5:].max()); coil_lo = float(lows[-5:].min())
+    out['adh_coil_range'] = round(float((coil_hi - coil_lo) / close * 100), 2) if close else None
+    vol_low50 = float(vols[-50:].min())
+    out['adh_vdu'] = bool(float(vols[-1]) <= vol_low50 * 1.10)
+    sl = last_c_low if last_c_low is not None else base_low
+    if sl is not None:
+        if (close - sl) / close * 100 > 8.0: sl = close * 0.92
+        out['adh_sl'] = round(float(sl), 1)
+    return out
 
 def parse_int(v):
     if v is None or v == "":
@@ -41,8 +124,38 @@ def parse_float(v):
     except:
         return 0.0
 
+# ---------- ETF / ETN / 리츠 / 스팩 제외 ----------
+# 전에는 이름에 단어가 들어가면 빼는 방식이라 새 브랜드가 다 샜음.
+# 이제는 브랜드 접두어 + 포함 키워드 2단계로 나눔.
+# BNK처럼 진짜 주식을 빼버리던 과한 키워드는 뺐음.
+ETF_PREFIXES = [
+    "TIGER", "KODEX", "RISE", "KBSTAR", "ARIRANG", "ACE", "HANARO", "SOL",
+    "KINDEX", "KOSEF", "TREX", "PLUS", "TIMEFOLIO", "KoAct", "KOACT",
+    "1Q", "WOORI", "HANA", "SHINHAN", "MIRAE", "MIRAEASSET",
+    "NH-", "DAISHIN", "FOCUS", "MASTER", "HK", "KIWOOM", "BETA",
+    "VALUE", "PULSE", "BULLS", "BEARS", "TIGER ", "KODEX ",
+]
+ETF_CONTAINS = [
+    "ETF", "ETN", "리츠", "REITS", "스팩", "SPAC",
+    "인버스", "레버리지", "KOFR", "머니마켓", "CD금리", "국고채",
+    "채권", "달러", "미국배당", "다우존스", "S&P", "나스닥",
+    "선물", "인버스", "곱버스",
+]
+def is_etf_name(name):
+    if not name:
+        return True
+    n = str(name).strip()
+    # 1. 브랜드 접두어: 이름이 ETF 브랜드로 시작하면 ETF
+    for p in ETF_PREFIXES:
+        if n.startswith(p):
+            return True
+    # 2. 포함 키워드: 이름 안에 ETF/ETN/리츠 등이 있으면 ETF
+    for k in ETF_CONTAINS:
+        if k in n:
+            return True
+    return False
+
 def get_list():
-    EXCLUDE = ["TIGER","KODEX","RISE","KBSTAR","ARIRANG","ACE","HANARO","SOL","KINDEX","KOSEF","TREX","BNK","ETF","ETN","리츠","스팩","선물","인버스","레버리지","KOFR","머니마켓","CD금리","국고채","채권","달러","미국배당","다우존스","S&P","나스닥"]
     out = []
     for market in MARKETS:
         cnt = 0
@@ -62,7 +175,8 @@ def get_list():
                     name = s.get("stockName") or s.get("name")
                     if not code or not name:
                         continue
-                    if any(k in name for k in EXCLUDE):
+                    # 1차: 이름으로 ETF 제외
+                    if is_etf_name(name):
                         continue
                     mcap = parse_int(s.get("marketValue") or s.get("marketCap") or 0)
                     out.append((str(code).zfill(6), name, market, mcap))
@@ -164,6 +278,9 @@ def fetch_price(code):
         return None
 
 def calc_all(code, name, market, mcap_list, df, kospi_ret, fund):
+    # 2차: 이름으로 한 번 더 ETF 제외 — get_list()를 통과한 새 브랜드도 여기서 걸림
+    if is_etf_name(name):
+        return None
     df = df.dropna(subset=["closePrice"])
     if len(df) < 252:
         return None
@@ -216,7 +333,7 @@ def calc_all(code, name, market, mcap_list, df, kospi_ret, fund):
     stage = 2 if mc==8 else (4 if mc<=3 else 1)
     mcap = mcap_list if mcap_list else fund.get("mcap_api", 0)
     dollar_vol = int(close*vol//100000000)
-    return {
+    result = {
         "name": name, "code": code, "market": market,
         "price": int(close), "change": round((close-prev)/prev*100, 2) if prev else 0,
         "volume": int(vol//100000), "dollar_vol": dollar_vol,
@@ -259,8 +376,17 @@ def calc_all(code, name, market, mcap_list, df, kospi_ret, fund):
         "c5": bool(sma[50]>sma[150]>sma[200]), "c6": bool(close>sma[50]), "c7": bool(close>=low52*1.3), "c8": bool(close>=high52*0.75),
         "data_days": int(len(df)),
     }
+    # ★ ADH-VCP 추가 (원본 로직 안 건드리고, 마지막에 합치기만 함)
+    result.update(calc_adh(df))
+    return result
 
 if __name__ == "__main__":
+    # ★ 스마트 업데이트: 최신이면 바로 스킵
+    _need, _reason = needs_update()
+    print(_reason)
+    if not _need:
+        print("최신 데이터라 스킵합니다.")
+        exit()
     jobs = get_list()
     print(f"총 {len(jobs)}개 수집 시작 (가격 + 재무)...")
     start = time.time()

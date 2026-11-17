@@ -50,7 +50,7 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <!-- FUNDAMENTAL -->
 <div class="card"><h3>🏛 FUNDAMENTAL</h3>
 <div class="grid">
-<div class="field"><label>Symbol</label><input id="f_q" placeholder="삼성, 005930" oninput="render()"></div>
+<div class="field"><label>Symbol</label><input id="f_q" placeholder="【entity-삼성¦canonical_name=삼성】, 005930" oninput="render()"></div>
 <div class="field"><label>Mkt Cap (시가총액)</label><select id="f_mcap" onchange="render()"><option value="ALL">All</option><option value="LARGE">대형 (1조+)</option><option value="MID">중형 (3천억~1조)</option><option value="SMALL">소형 (3천억 미만)</option></select></div>
 <div class="field"><label>Dollar Vol (거래대금 억)</label><div class="row"><input type="number" id="f_dvolMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_dvolMax" placeholder="Max" oninput="render()"></div></div>
 <div class="field"><label>Price</label><div class="row"><input type="number" id="f_minP" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_maxP" placeholder="Max" oninput="render()"></div></div>
@@ -75,7 +75,7 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <div class="card"><h3>📈 TECHNICAL</h3>
 <div class="grid">
 <div class="field"><label>ADR %</label><div class="row"><input type="number" id="f_adrMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_adrMax" placeholder="Max" oninput="render()"></div></div>
-<div class="field"><label>Stage</label><select id="f_stage" onchange="render()"><option value="ALL">All</option><option value="2">Stage 2 (상승)</option><option value="1">Stage 1 (횡보)</option><option value="4">Stage 4 (하락)</option></select></div>
+<div class="field"><label>Stage</label><select id="f_stage" onchange="render()"><option value="ALL">All</option><option value="2">Stage 2 (상승)</option><option value="3">Stage 3 (고점/분산)</option><option value="1">Stage 1 (횡보)</option><option value="4">Stage 4 (하락)</option></select></div>
 <div class="field"><label>RS Rating</label><div class="row"><span>≥</span><input type="number" id="f_rs" placeholder="0-99" oninput="render()"></div></div>
 <div class="field"><label>RS 1M</label><div class="row"><span>≥</span><input type="number" id="f_rs1m" placeholder="0-99" oninput="render()"></div></div>
 <div class="field"><label>RS 3M</label><div class="row"><span>≥</span><input type="number" id="f_rs3m" placeholder="0-99" oninput="render()"></div></div>
@@ -121,7 +121,7 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <script>
 let RAW=[], PRESET='ALL', SORT_KEY='rs', SORT_DESC=true;
 let SEG={ipo:'ALL',blue:'ALL',ma:'ALL',pkt:'ALL',pwr:'ALL',se:'ALL',cans:'ALL',sq:'ALL',vcp:'ALL'};
-let LOGIC=[]; // [{logic:'AND'|'OR', field, op, value}]
+let LOGIC=[];
 let SAVED=JSON.parse(localStorage.getItem('kr_presets')||'[]');
 const FIELDS=[
  {v:'rs',label:'RS Rating'},{v:'rs_1m',label:'RS 1M'},{v:'rs_3m',label:'RS 3M'},{v:'rs_12m',label:'RS 12M'},
@@ -202,10 +202,9 @@ function toggleFilters(){let a=document.getElementById('filterArea'); a.style.di
 function sortBy(k){if(SORT_KEY===k) SORT_DESC=!SORT_DESC; else{SORT_KEY=k;SORT_DESC=true;} render();}
 function val(id){let e=document.getElementById(id); return e?e.value:'';}
 function num(id){let v=val(id); return v==='' ? null : parseFloat(v);}
-// Logic Builder
 function addLogicRow(logic='AND'){
  LOGIC.push({logic, field:'rs', op:'>=', value:80});
- renderLogic();
+ renderLogic(); render();
 }
 function renderLogic(){
  let el=document.getElementById('logicRows');
@@ -438,7 +437,11 @@ function render(){
   if(SEG.vcp==='NO' && isVCP(r)) return false;
   if(SEG.se==='YES' && !(r.high_diff>=-2 && r.vol_ratio>=1.5)) return false;
   if(SEG.se==='NO' && (r.high_diff>=-2 && r.vol_ratio>=1.5)) return false;
-  let stage = minCount(r)===8 ? '2' : (minCount(r)<=3 ? '4' : '1');
+  let stage;
+  if (minCount(r)===8) stage='2';
+  else if (r.price < r.sma50 && r.price > r.sma150 && r.price > r.sma200) stage='3';
+  else if (minCount(r)<=3) stage='4';
+  else stage='1';
   if(val('f_stage')!=='ALL' && stage!==val('f_stage')) return false;
   if(SEG.ipo==='6M' && r.data_days>180) return false;
   if(SEG.ipo==='1Y' && r.data_days>365) return false;

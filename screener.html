@@ -56,20 +56,24 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <div class="field"><label>Price</label><div class="row"><input type="number" id="f_minP" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_maxP" placeholder="Max" oninput="render()"></div></div>
 <div class="field"><label>EPS Growth % (진짜 재무)</label><div class="row"><span>≥</span><input type="number" id="f_epsg" placeholder="25" oninput="render()"></div></div>
 <div class="field"><label>Sales Growth % (진짜 재무)</label><div class="row"><span>≥</span><input type="number" id="f_salesg" placeholder="%" oninput="render()"></div></div>
-<div class="field"><label>EPS Rating (= RS)</label><div class="row"><span>≥</span><input type="number" id="f_epsr" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>EPS Rating</label><div class="row"><span>≥</span><input type="number" id="f_epsr" placeholder="0-99" oninput="render()"></div></div>
 <div class="field"><label>Mkt Cap (시가총액) (억)</label><div class="row"><input type="number" id="f_mcapMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_mcapMax" placeholder="Max" oninput="render()"></div></div>
 </div>
 <div class="grid4" style="margin-top:10px">
 <div class="field"><label>ROE %</label><div class="row"><span>≥</span><input type="number" id="f_roe" placeholder="17" oninput="render()"></div></div>
-<div class="field"><label>PER</label><div class="row"><input type="number" id="f_perMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_perMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>PER</label><div class="row"><input type="number" id="f_perMin" value="0" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_perMax" placeholder="Max" oninput="render()"></div></div>
 <div class="field"><label>PBR</label><div class="row"><input type="number" id="f_pbrMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_pbrMax" placeholder="Max" oninput="render()"></div></div>
 <div class="field"><label>Sector / 업종</label><input id="f_sector" placeholder="반도체, 바이오..." oninput="render()"></div>
 </div>
 <div class="grid4" style="margin-top:10px">
+<div class="field"><label>부채비율 %</label><div class="row"><input type="number" id="f_debtMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_debtMax" placeholder="Max" oninput="render()"></div></div>
+<div class="field"><label>당좌비율 %</label><div class="row"><input type="number" id="f_currMin" placeholder="Min" oninput="render()"><span>-</span><input type="number" id="f_currMax" placeholder="Max" oninput="render()"></div></div>
 <div class="field"><label>Market</label><select id="f_market" onchange="render()"><option value="ALL">All</option><option value="KOSPI">KOSPI</option><option value="KOSDAQ">KOSDAQ</option></select></div>
 <div class="field"><label>IPO Age</label><div class="seg" id="ipoSeg"><button onclick="setSeg(this,'ipo','ALL')" class="active">All</button><button onclick="setSeg(this,'ipo','6M')">6M</button><button onclick="setSeg(this,'ipo','1Y')">1Y</button><button onclick="setSeg(this,'ipo','2Y')">2Y+</button></div></div>
+</div>
+<div class="grid4" style="margin-top:10px">
 <div class="field"><label>EPS (원)</label><div class="row"><span>≥</span><input type="number" id="f_eps" placeholder="" oninput="render()"></div></div>
-<div class="field"><label>시가총액 (억) — 구버전 호환용, 위 Mkt Cap과 같은 값</label><div class="row"><input type="number" id="f_mcapMin2" placeholder="Min (사용 안 함)" oninput="render()" disabled><span>-</span><input type="number" id="f_mcapMax2" placeholder="Max (사용 안 함)" oninput="render()" disabled></div></div>
+<div class="field"><label>&nbsp;</label><div style="font-size:11px;color:#94a3b8;padding-top:8px">재무가 없는 종목은 - 로 표시, 재무 필터 걸면 제외됨 · PER Min 0 = 적자 제외 (지우면 적자도 표시)</div></div>
 </div></div>
 
 <!-- TECHNICAL -->
@@ -105,7 +109,7 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 <!-- RATING -->
 <div class="card"><h3>⭐ RATING / SCORE</h3>
 <div class="grid">
-<div class="field"><label>Composite (= RS)</label><div class="row"><span>≥</span><input type="number" id="f_comp" placeholder="0-99" oninput="render()"></div></div>
+<div class="field"><label>Composite</label><div class="row"><span>≥</span><input type="number" id="f_comp" placeholder="0-99" oninput="render()"></div></div>
 <div class="field"><label>Minervini (조건 수)</label><div class="row"><span>≥</span><input type="number" id="f_minv" placeholder="0-8" oninput="render()"></div></div>
 <div class="field"><label>CANSLIM (조건 수, 0-6)</label><div class="row"><span>≥</span><input type="number" id="f_cansScore" placeholder="0-6" oninput="render()"></div></div>
 <div class="field"><label>Squeeze</label><div class="seg" id="sqSeg"><button onclick="setSeg(this,'sq','ALL')" class="active">All</button><button onclick="setSeg(this,'sq','YES')">Yes</button><button onclick="setSeg(this,'sq','NO')">No</button></div></div>
@@ -127,7 +131,7 @@ table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;ove
 </div>
 
 <div class="card"><div><b id="summary"></b></div>
-<table><thead><tr><th onclick="sortBy('market')">시장</th><th onclick="sortBy('name')">종목</th><th>코드</th><th onclick="sortBy('price')">현재가</th><th onclick="sortBy('change')">등락률</th><th onclick="sortBy('volume')">거래량</th><th onclick="sortBy('rs')">RS</th><th onclick="sortBy('eps_growth')">EPS Gr</th><th onclick="sortBy('sales_growth')">Sales Gr</th><th onclick="sortBy('roe')">ROE</th><th onclick="sortBy('ret1y')">1년</th><th onclick="sortBy('high_diff')">신고가대비</th><th onclick="sortBy('vol_ratio')">거래량배율</th><th>Minervini</th><th>판정</th></tr></thead><tbody id="tbody"></tbody></table></div>
+<table><thead><tr><th onclick="sortBy('market')">시장</th><th onclick="sortBy('name')">종목</th><th>코드</th><th onclick="sortBy('price')">현재가</th><th onclick="sortBy('change')">등락률</th><th onclick="sortBy('volume')">거래량</th><th onclick="sortBy('mcap')">시가총액</th><th onclick="sortBy('rs')">RS</th><th onclick="sortBy('eps_growth')">EPS Gr</th><th onclick="sortBy('sales_growth')">Sales Gr</th><th onclick="sortBy('roe')">ROE</th><th onclick="sortBy('per')">PER</th><th onclick="sortBy('pbr')">PBR</th><th onclick="sortBy('debt_ratio')">부채비율</th><th onclick="sortBy('quick_ratio')">당좌비율</th><th onclick="sortBy('ret1y')">1년</th><th onclick="sortBy('high_diff')">신고가대비</th><th onclick="sortBy('vol_ratio')">거래량배율</th><th>Minervini</th><th>판정</th></tr></thead><tbody id="tbody"></tbody></table></div>
 </div>
 
 <script>
@@ -136,9 +140,11 @@ let SEG={ipo:'ALL',blue:'ALL',ma:'ALL',pkt:'ALL',pwr:'ALL',se:'ALL',cans:'ALL',s
 let LOGIC=[];
 let SAVED=JSON.parse(localStorage.getItem('kr_presets')||'[]');
 const FIELDS=[
- {v:'rs',label:'RS Rating'},{v:'rs_1m',label:'RS 1M'},{v:'rs_3m',label:'RS 3M'},{v:'rs_12m',label:'RS 12M'},
+ {v:'rs',label:'RS Rating'},{v:'rs_rating',label:'RS Rating'},{v:'eps_rating',label:'EPS Rating'},{v:'composite',label:'Composite'},
+ {v:'rs_1m',label:'RS 1M'},{v:'rs_3m',label:'RS 3M'},{v:'rs_12m',label:'RS 12M'},
  {v:'eps_growth',label:'EPS Growth %'},{v:'sales_growth',label:'Sales Growth %'},{v:'roe',label:'ROE %'},
  {v:'per',label:'PER'},{v:'pbr',label:'PBR'},{v:'eps',label:'EPS'},
+ {v:'debt_ratio',label:'부채비율 %'},{v:'quick_ratio',label:'당좌비율 %'},
  {v:'price',label:'Price'},{v:'change',label:'1D Chg %'},{v:'ret1w',label:'1W Chg %'},{v:'ret1m',label:'1M Chg %'},{v:'ret3m',label:'3M Chg %'},{v:'ret6m',label:'6M Chg %'},{v:'ret1y',label:'1Y Chg %'},
  {v:'vol_ratio',label:'Vol Surge (거래량 배율)'},{v:'vol_50d',label:'Vol / 50d'},{v:'dollar_vol',label:'Dollar Vol (억)'},
  {v:'high_diff',label:'% from 52W Hi'},{v:'low_diff',label:'% from 52W Lo'},
@@ -152,9 +158,14 @@ const FIELDS=[
  {v:'adh_coil_range',label:'ADH Coil Range %'},{v:'adh_base_age',label:'ADH Base Age'},
 ];
 const PRESETS=[{id:'ALL',label:'All Stocks'},{id:'MIN',label:'Minervini'},{id:'CANSLIM',label:'CANSLIM'},{id:'VCP',label:'VCP'},{id:'BLUE',label:'Blue Dots'},{id:'VOL',label:'Vol Breakout'},{id:'EPISODIC',label:'Episodic Pivot'},{id:'MOM',label:'Momentum'},{id:'LEADER',label:'Leaders'},{id:'NEWHIGH',label:'New Highs'},{id:'GROWTH',label:'Growth'},{id:'TIGHT',label:'Tight'},{id:'SQUEEZE',label:'Squeeze'},{id:'QULL_EP',label:'Qullamaggie EP'},{id:'QULL_WATCH',label:'Qullamaggie Watch'},{id:'QULL_BREAKOUT',label:'Qullamaggie Breakout'},{id:'QULL_MOM',label:'Qullamaggie Momentum'}];
+// ★ 재무 null 대응 헬퍼: null이면 - 로 표시
+function fmt(v, suffix=''){ if(v===undefined||v===null) return '-'; return v+suffix; }
+function hasVal(v){ return v!==undefined && v!==null; }
+// ★ 시가총액 표시: 10000억 이상은 조 단위
+function fmtMcap(v){ if(v===undefined||v===null) return '-'; if(v>=10000) return (v/10000).toFixed(1)+'조'; return v.toLocaleString()+'억'; }
 function minCount(r){return [r.c1,r.c2,r.c3,r.c4,r.c5,r.c6,r.c7,r.c8].filter(Boolean).length;}
 function getStage(r){if(minCount(r)===8) return 2; if(r.price < r.sma50 && r.price > r.sma150 && r.price > r.sma200) return 3; if(minCount(r)<=3) return 4; return 1;}
-function canslimCount(r){let c=0; if(r.eps_growth>=25) c++; if(r.sales_growth>=20) c++; if(r.roe>=17) c++; if(r.rs>=80) c++; if(r.high_diff>=-5) c++; if(r.vol_ratio>=1.5) c++; return c;}
+function canslimCount(r){let c=0; if(hasVal(r.eps_growth) && r.eps_growth>=25) c++; if(hasVal(r.sales_growth) && r.sales_growth>=20) c++; if(hasVal(r.roe) && r.roe>=17) c++; if(r.rs>=80) c++; if(r.high_diff>=-5) c++; if(r.vol_ratio>=1.5) c++; return c;}
 function isMin(r){return minCount(r)===8 && r.rs>=70;}
 function isCanslim(r){return canslimCount(r)===6;}
 function isVCP(r){return r.vola<2.5 && r.high_diff>=-10 && r.high_diff<=-2 && r.rs>=70;}
@@ -164,7 +175,7 @@ function isEpisodic(r){return r.vol_ratio>=3 && r.change>=5;}
 function isMom(r){return r.ret3m>=30 && r.rs>=85;}
 function isLeader(r){return r.rs>=90;}
 function isNewHigh(r){return r.high_diff>=-1;}
-function isGrowth(r){return r.ret1y>=50 && r.eps_growth>=25 && r.rs>=80;}
+function isGrowth(r){return r.ret1y>=50 && hasVal(r.eps_growth) && r.eps_growth>=25 && r.rs>=80;}
 function isTight(r){return r.vola<1.5 && Math.abs(r.change)<1;}
 function isSqueeze(r){return r.squeeze===true;}
 function isQullEP(r){return r.change>=5 && r.vol_ratio>=3 && r.high_diff>=-10 && r.rs>=85;}
@@ -178,7 +189,7 @@ function adhCoil(r){return (r.adh_coil_range!==undefined&&r.adh_coil_range!==nul
 function isAdhBase(r){return adhDepth(r)<=35 && adhCont(r)>=1 && r.rs>=70 && r.vola<2.5 && r.high_diff>=-35 && r.high_diff<=-2;}
 function isAdhWatch(r){let d=adhDist(r); return adhDepth(r)<=35 && adhCont(r)>=1 && d>4 && d<=8 && r.rs>=70 && r.vola<2.5;}
 function isAdhNear(r){let d=adhDist(r); return adhDepth(r)<=35 && adhCont(r)>=1 && d>0 && d<=4 && r.rs>=70 && r.vola<2.5;}
-function isAdhTight(r){let d=adhDist(r); return adhCoil(r)<=3 && d>0 && d<=4 && adhCont(r)>=1 && adhDepth(r)<=35 && r.rs>=70 && r.vola<2.5;}
+function isAdhTight(r){let d=adhDist(r); return adhCoil(r)<=3 && d>0 && d<=4 && adhCont(r)>=2 && adhDepth(r)<=35 && r.rs>=70 && r.vola<2.5;}
 // BREAKOUT: Coil 빼고 전 상단 탭이랑 동일 — Depth + Cont + Dist + Vol + RS + SMA
 function isAdhBreakout(r){let d=adhDist(r); return adhDepth(r)<=35 && adhCont(r)>=2 && d<=2 && d>-2 && r.vol_ratio>=1.5 && r.rs>=80 && r.price>r.sma50 && r.price>r.sma200;}
 function presetFilter(r){
@@ -328,7 +339,7 @@ function applyLogicPreset(name){
    {logic:'AND',field:'adh_coil_range',op:'<=',value:3},
    {logic:'AND',field:'adh_dist_line',op:'>',value:0},
    {logic:'AND',field:'adh_dist_line',op:'<=',value:4},
-   {logic:'AND',field:'adh_contractions',op:'>=',value:1},
+   {logic:'AND',field:'adh_contractions',op:'>=',value:2},
    {logic:'AND',field:'rs',op:'>=',value:70},
   ];
  } else if(name==='ADH_BREAKOUT'){
@@ -391,6 +402,8 @@ function loadSaved(i){
 }
 function resetAll(){
  document.querySelectorAll('input').forEach(e=>{if(e.id!=='presetName') e.value='';});
+ // ★ Reset 후에도 PER Min 0 유지 — 적자 제외가 기본값
+ document.getElementById('f_perMin').value='0';
  document.querySelectorAll('select').forEach(e=>e.selectedIndex=0);
  SEG={ipo:'ALL',blue:'ALL',ma:'ALL',pkt:'ALL',pwr:'ALL',se:'ALL',cans:'ALL',sq:'ALL',vcp:'ALL',adh:'ALL'};
  document.querySelectorAll('.seg').forEach(s=>{s.querySelectorAll('button').forEach((b,j)=>b.classList.toggle('active',j===0));});
@@ -406,7 +419,7 @@ async function load(){
  buildTabs(); renderLogic(); renderSaved(); render();
 }
 function render(){
- if(!RAW.length){document.getElementById('tbody').innerHTML='<tr><td colspan="15">데이터 없음</td></tr>'; return;}
+ if(!RAW.length){document.getElementById('tbody').innerHTML='<tr><td colspan="20">데이터 없음</td></tr>'; return;}
  let q=val('f_q').toLowerCase();
  let rows=RAW.filter(r=>{
   if(!presetFilter(r)) return false;
@@ -415,15 +428,20 @@ function render(){
   if(q && !(r.name.toLowerCase().includes(q) || r.code.includes(q) || (r.sector||'').toLowerCase().includes(q))) return false;
   if(num('f_minP')!==null && r.price<num('f_minP')) return false;
   if(num('f_maxP')!==null && r.price>num('f_maxP')) return false;
-  if(num('f_epsg')!==null && r.eps_growth<num('f_epsg')) return false;
-  if(num('f_salesg')!==null && r.sales_growth<num('f_salesg')) return false;
-  if(num('f_epsr')!==null && r.rs<num('f_epsr')) return false;
-  if(num('f_roe')!==null && r.roe<num('f_roe')) return false;
-  if(num('f_perMin')!==null && r.per<num('f_perMin')) return false;
-  if(num('f_perMax')!==null && r.per>num('f_perMax')) return false;
-  if(num('f_pbrMin')!==null && r.pbr<num('f_pbrMin')) return false;
-  if(num('f_pbrMax')!==null && r.pbr>num('f_pbrMax')) return false;
-  if(num('f_eps')!==null && r.eps<num('f_eps')) return false;
+  // ★ 재무 null이면 필터 걸렸을 때 탈락
+  if(num('f_epsg')!==null && (!hasVal(r.eps_growth) || r.eps_growth<num('f_epsg'))) return false;
+  if(num('f_salesg')!==null && (!hasVal(r.sales_growth) || r.sales_growth<num('f_salesg'))) return false;
+  if(num('f_epsr')!==null && (!hasVal(r.eps_rating) || r.eps_rating<num('f_epsr'))) return false;
+  if(num('f_roe')!==null && (!hasVal(r.roe) || r.roe<num('f_roe'))) return false;
+  if(num('f_perMin')!==null && (!hasVal(r.per) || r.per<num('f_perMin'))) return false;
+  if(num('f_perMax')!==null && (!hasVal(r.per) || r.per>num('f_perMax'))) return false;
+  if(num('f_pbrMin')!==null && (!hasVal(r.pbr) || r.pbr<num('f_pbrMin'))) return false;
+  if(num('f_pbrMax')!==null && (!hasVal(r.pbr) || r.pbr>num('f_pbrMax'))) return false;
+  if(num('f_debtMin')!==null && (!hasVal(r.debt_ratio) || r.debt_ratio<num('f_debtMin'))) return false;
+  if(num('f_debtMax')!==null && (!hasVal(r.debt_ratio) || r.debt_ratio>num('f_debtMax'))) return false;
+  if(num('f_currMin')!==null && (!hasVal(r.quick_ratio) || r.quick_ratio<num('f_currMin'))) return false;
+  if(num('f_currMax')!==null && (!hasVal(r.quick_ratio) || r.quick_ratio>num('f_currMax'))) return false;
+  if(num('f_eps')!==null && (!hasVal(r.eps) || r.eps<num('f_eps'))) return false;
   if(val('f_sector') && !(r.sector||'').toLowerCase().includes(val('f_sector').toLowerCase())) return false;
   if(num('f_dvolMin')!==null && r.dollar_vol<num('f_dvolMin')) return false;
   if(num('f_dvolMax')!==null && r.dollar_vol>num('f_dvolMax')) return false;
@@ -453,7 +471,7 @@ function render(){
   if(num('f_betaMax')!==null && r.beta>num('f_betaMax')) return false;
   if(num('f_v50Min')!==null && r.vol_50d<num('f_v50Min')) return false;
   if(num('f_v50Max')!==null && r.vol_50d>num('f_v50Max')) return false;
-  if(num('f_comp')!==null && r.rs<num('f_comp')) return false;
+  if(num('f_comp')!==null && (!hasVal(r.composite) || r.composite<num('f_comp'))) return false;
   if(num('f_minv')!==null && minCount(r)<num('f_minv')) return false;
   if(num('f_cansScore')!==null && canslimCount(r)<num('f_cansScore')) return false;
   if(SEG.blue==='YES' && !isBlue(r)) return false;
@@ -503,8 +521,8 @@ function render(){
   let badge=isMin(r)?'<span class="badge green">MIN 8/8</span>':(mc>=7?'<span class="badge orange">MIN '+mc+'/8</span>':mc+'/8');
   let cans=cc===6?'<span class="badge">CANSLIM 6/6</span>':(cc>=5?'<span class="badge orange">CANSLIM '+cc+'/6</span>':'');
   let vcp=isVCP(r)?'<span class="badge gray">VCP</span>':'';
-  return `<tr><td>${r.market}</td><td><b>${r.name}</b><br><span style="font-size:11px;color:#94a3b8">${r.sector||''}</span></td><td>${r.code}</td><td>${r.price.toLocaleString()}원</td><td class="${r.change>=0?'up':'down'}">${r.change}%</td><td>${r.volume}억</td><td>${r.rs}</td><td>${r.eps_growth}%</td><td>${r.sales_growth}%</td><td>${r.roe}%</td><td>${r.ret1y}%</td><td>${r.high_diff}%</td><td>${r.vol_ratio}배</td><td>${badge}</td><td>${cans} ${vcp}</td></tr>`;
- }).join('')||'<tr><td colspan="15">조건에 맞는 종목이 없습니다.</td></tr>';
+  return `<tr><td>${r.market}</td><td><b>${r.name}</b><br><span style="font-size:11px;color:#94a3b8">${r.sector||''}</span></td><td>${r.code}</td><td>${r.price.toLocaleString()}원</td><td class="${r.change>=0?'up':'down'}">${r.change}%</td><td>${r.volume}억</td><td>${fmtMcap(r.mcap)}</td><td>${r.rs}</td><td>${fmt(r.eps_growth,'%')}</td><td>${fmt(r.sales_growth,'%')}</td><td>${fmt(r.roe,'%')}</td><td>${fmt(r.per)}</td><td>${fmt(r.pbr)}</td><td>${fmt(r.debt_ratio,'%')}</td><td>${fmt(r.quick_ratio,'%')}</td><td>${r.ret1y}%</td><td>${r.high_diff}%</td><td>${r.vol_ratio}배</td><td>${badge}</td><td>${cans} ${vcp}</td></tr>`;
+ }).join('')||'<tr><td colspan="20">조건에 맞는 종목이 없습니다.</td></tr>';
 }
 load();
 </script></body></html>

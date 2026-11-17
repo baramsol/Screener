@@ -1,64 +1,48 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
-echo 현재 폴더: %CD%
-echo ==========================================
-echo  Korean Stock Screener 실행 중...
-echo ==========================================
+cd /d %~dp0
+title KR Screener - run (update + server + browser)
+
+echo ============================================
+echo  KR Screener - run.bat
+echo  1) screener_data.py 실행 (스마트 업데이트)
+echo  2) 로컬 서버 시작 (8000)
+echo  3) 브라우저 열기 (캐시 방지 ?v=타임스탬프)
+echo ============================================
 echo.
 
-if not exist screener_data.py (
-  echo [경고] screener_data.py가 없습니다!
-  pause
-  exit /b
-)
-if not exist screener.html (
-  echo [경고] screener.html이 없습니다!
-  pause
-  exit /b
-)
+:: --- Python 버전 확인 (wmic 사용 안 함, powershell 사용) ---
+for /f "tokens=*" %%v in ('powershell -NoProfile -Command "python --version 2>&1"') do set PYVER=%%v
+echo Python: %PYVER%
+echo.
 
-echo [1/2] 데이터 확인 중... (최신이면 바로 스킵됩니다)
+:: --- 1) 데이터 업데이트 ---
+echo [1/3] 데이터 업데이트 중... (최신이면 자동 스킵됩니다)
 python screener_data.py
 if errorlevel 1 (
-  echo.
-  echo [경고] screener_data.py 실행 중 오류가 났습니다. 기존 data.json으로 열어볼게요.
-  echo.
+    echo.
+    echo [경고] screener_data.py 실행 중 오류가 있었습니다. 기존 data.json으로 계속 진행합니다.
 )
 echo.
 
-if not exist data.json (
-  echo [경고] data.json이 없습니다!
-  pause
-  exit /b
-)
+:: --- 2) 기존 서버 정리 (8000 포트, powershell로만) ---
+echo [2/3] 기존 서버 정리 중...
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+timeout /t 1 /nobreak >nul
 
-REM --- 캐시 방지 서버 만들기 ---
-echo import http.server, socketserver, os > serve_nocache.py
-echo os.chdir(os.path.dirname(os.path.abspath(__file__)) or '.') >> serve_nocache.py
-echo class H(http.server.SimpleHTTPRequestHandler): >> serve_nocache.py
-echo     def end_headers(self): >> serve_nocache.py
-echo         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0') >> serve_nocache.py
-echo         self.send_header('Pragma', 'no-cache') >> serve_nocache.py
-echo         self.send_header('Expires', '0') >> serve_nocache.py
-echo         super().end_headers() >> serve_nocache.py
-echo     def log_message(self, *a): >> serve_nocache.py
-echo         pass >> serve_nocache.py
-echo socketserver.TCPServer.allow_reuse_address = True >> serve_nocache.py
-echo socketserver.TCPServer(('127.0.0.1', 8000), H).serve_forever() >> serve_nocache.py
-
-echo [2/2] data.json 확인됨. 서버를 켭니다... (캐시 방지 모드)
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :8000 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
-start /min python serve_nocache.py
+:: --- 서버 시작 (백그라운드) ---
+echo 로컬 서버 시작 중... http://localhost:8000
+start "KR Screener Server" /min python -m http.server 8000 --bind 127.0.0.1
 timeout /t 2 /nobreak >nul
 
-for /f "tokens=2 delims==" %%i in ('wmic os get localdatetime /value') do set DT=%%i
-set VER=%DT:~0,8%_%DT:~8,6%
-echo 브라우저를 엽니다... (버전: %VER%)
-start http://localhost:8000/screener.html?v=%VER%
+:: --- 3) 브라우저 열기 (캐시 방지 타임스탬프) ---
+echo [3/3] 브라우저 여는 중...
+for /f %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMddHHmmss"') do set TS=%%t
+start "" "http://localhost:8000/screener.html?v=%TS%"
+
 echo.
-echo ==========================================
-echo  이 창을 닫으면 서버가 꺼집니다. 닫지 마세요.
-echo  종료하려면 이 창에서 Ctrl+C를 누르세요.
-echo ==========================================
+echo ============================================
+echo  완료! 브라우저에서 스크리너가 열렸습니다.
+echo  서버를 끄려면 이 창을 닫고, 서버 창(KR Screener Server)도 닫으세요.
+echo ============================================
 pause
